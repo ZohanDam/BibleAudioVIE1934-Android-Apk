@@ -3,6 +3,7 @@ package com.zohan.nghekinhthanh1925
 import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
+import android.media.AudioManager
 import android.app.Notification
 import android.media.session.PlaybackState
 import android.os.SystemClock
@@ -365,6 +366,71 @@ class AudioPlayerServiceTest {
         assertTrue(PlaybackStateStore.positionUpdatedElapsed > 0)
         action(AudioPlayerService.ACTION_PAUSE)
         assertEquals(0f, sessionState().playbackSpeed)
+    }
+
+    private fun focus(change: Int) {
+        val listener = AudioPlayerService::class.java.getDeclaredField("audioFocusListener").apply {
+            isAccessible = true
+        }.get(service) as AudioManager.OnAudioFocusChangeListener
+        listener.onAudioFocusChange(change)
+    }
+
+    private fun startBetweenCheckpoints() {
+        select(1, "VIE1925", true)
+        prepare()
+        seek(25_000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertTrue(player()!!.currentPosition > PlaybackStateStore.positionMs)
+    }
+
+    @Test @Config(sdk = [34]) fun interruptionPauseActionSavesImmediatelyWithoutWaitingForPoll() {
+        startBetweenCheckpoints()
+        val exactPosition = player()!!.currentPosition
+        action(AudioPlayerService.ACTION_PAUSE)
+        assertFalse(player()!!.isPlaying)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        assertEquals(exactPosition, PlaybackStateStore.positionMs)
+        val state = service.getSharedPreferences("state", Context.MODE_PRIVATE)
+        assertEquals(exactPosition.toLong(), state.getLong("position_1", -1))
+        assertFalse(state.getBoolean("wasPlaying", true))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(20))
+        assertEquals(exactPosition, player()!!.currentPosition)
+        assertFalse(PlaybackStateStore.isPlaying)
+    }
+
+    @Test @Config(sdk = [34]) fun interruptionTransientFocusLossSavesAndWaitsForFocusGain() {
+        startBetweenCheckpoints()
+        val exactPosition = player()!!.currentPosition
+        focus(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        assertFalse(player()!!.isPlaying)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        assertEquals(exactPosition.toLong(), service.getSharedPreferences("state", Context.MODE_PRIVATE)
+            .getLong("position_1", -1))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(20))
+        assertFalse(player()!!.isPlaying)
+        assertEquals(exactPosition, player()!!.currentPosition)
+        focus(AudioManager.AUDIOFOCUS_GAIN)
+        assertTrue(player()!!.isPlaying)
+        assertTrue(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test @Config(sdk = [34]) fun interruptionManualPauseDuringFocusLossPreventsAutomaticResume() {
+        startBetweenCheckpoints()
+        focus(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        action(AudioPlayerService.ACTION_PAUSE)
+        focus(AudioManager.AUDIOFOCUS_GAIN)
+        assertFalse(player()!!.isPlaying)
+        assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test @Config(sdk = [34]) fun interruptionPermanentFocusLossDoesNotAutomaticallyResume() {
+        startBetweenCheckpoints()
+        focus(AudioManager.AUDIOFOCUS_LOSS)
+        assertFalse(player()!!.isPlaying)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        focus(AudioManager.AUDIOFOCUS_GAIN)
+        assertFalse(player()!!.isPlaying)
+        assertFalse(PlaybackStateStore.playWhenReady)
     }
 
     @Test @Config(sdk = [34]) fun android14SessionAndNotificationExposeRewindPlayNext() {
