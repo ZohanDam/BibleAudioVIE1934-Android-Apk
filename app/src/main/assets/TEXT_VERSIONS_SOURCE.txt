@@ -1,0 +1,25 @@
+Offline Bible Text Versions
+
+VIE1925 - YouVersion version 193
+https://www.bible.com/versions/193
+Vietnamese 1925 translation - Public Domain.
+
+VIE2010 - YouVersion version 151
+https://www.bible.com/versions/151
+Copyright 2010 United Bible Societies.
+
+NIV - YouVersion version 111 (2011 edition)
+https://www.bible.com/versions/111
+Holy Bible, New International Version (NIV).
+Copyright 1973, 1978, 1984, 2011 by Biblica, Inc.
+Used by permission. All rights reserved worldwide.
+
+The app owner stated authorization to obtain VIE2010 and NIV text online
+and include it for offline reading. This does not declare those editions
+public domain or grant rights to other parties.
+
+All three editions preserve the source verse labels and combined verses.
+Only verse text is imported; editorial notes and cross-references are excluded.
+NIV footnote-only markers for omitted verses are excluded from the body.
+Chapter text is bundled in the APK; runtime Internet access is not needed
+for reading. Existing audio remains VIE1925.

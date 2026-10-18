@@ -1,0 +1,17 @@
+.gradle*/
+.kotlin/
+.idea/
+build*/
+app/build*/
+local.properties
+original-v*/
+*-cache/
+**/__pycache__/
+*.apk
+*.apk.idsig
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.log
+*.part

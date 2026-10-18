@@ -1,0 +1,27 @@
+Kinh Thanh Tieng Viet 1925 (VIE1925)
+
+Source:
+https://www.bible.com/versions/193-vie1925-kinh-thanh-tieng-viet-1925
+
+Text source:
+YouVersion / Bible.com, version 193 (VIE1925).
+All 66 books and 1,189 chapters are imported directly from that version.
+The audio manifest uses the same version_id=193.
+Verse text is preserved; display whitespace is normalized.
+Editorial headings, footnotes, and cross-reference notes are not narrated
+verse text and are excluded.
+
+Translation:
+William Cadman (1883-1948)
+
+Provider listed by YouVersion:
+Bible Society Vietnam
+
+Translation:
+Vietnamese 1925 translation, Public Domain.
+
+The previous eBible.org text has been replaced by the YouVersion VIE1925
+verse text. Source metadata is stored in the bundled SQLite database.
+
+The audio URLs are not bundled audio files. Audio is downloaded only
+after the user requests it in the app.

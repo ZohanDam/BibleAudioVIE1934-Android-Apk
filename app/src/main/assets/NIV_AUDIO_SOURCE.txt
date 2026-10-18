@@ -1,0 +1,15 @@
+NIV audio: The Listener's Bible: NIV Edition
+Narrator: Max McLean
+Audio copyright 2011 Max McLean. All rights reserved worldwide.
+Text copyright 1973, 1978, 1984, 2011 Biblica, Inc.
+Source: https://www.bible.com/audio-bible/111/GEN.1.NIV
+YouVersion text version: 111; recording: 3; MP3 bitrate: 32 kbps.
+
+Imported following the application owner's confirmation of authorization.
+The APK contains chapter links only, not recordings. Audio is streamed or
+downloaded on demand in the app. No access controls or DRM are bypassed.
+Keep copyright notices and comply with the permission granted by the owners.
+
+NIV filenames use an NIV_ prefix and download queue identifiers use an
+offset of 1000000, preserving existing VIE1925 files and queue identifiers.
+Rebuild metadata with tools/import_niv_audio.py (resumable JSON cache).
