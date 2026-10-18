@@ -28,6 +28,7 @@ class MainActivityStartupTest {
         PlaybackStateStore.isPlaying = false
         PlaybackStateStore.durationMs = 0
         PlaybackStateStore.positionMs = 0
+        PlaybackStateStore.positionUpdatedElapsed = 0
         PlaybackStateStore.sleepDeadlineElapsed = 0
         PlaybackStateStore.sleepMinutes = 0
     }

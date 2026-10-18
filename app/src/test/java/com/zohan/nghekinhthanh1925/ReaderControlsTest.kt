@@ -41,6 +41,7 @@ class ReaderControlsTest {
         PlaybackStateStore.playWhenReady = false
         PlaybackStateStore.isPlaying = false
         PlaybackStateStore.positionMs = 0
+        PlaybackStateStore.positionUpdatedElapsed = 0
         PlaybackStateStore.durationMs = 0
         PlaybackStateStore.speed = 1f
         PlaybackStateStore.sleepDeadlineElapsed = 0
@@ -240,16 +241,17 @@ class ReaderControlsTest {
 
     @Test fun gearMenuHasLabeledOptionsAndStructuredAboutLast() = withReader { activity ->
         val (popup, rows) = menuRows(activity, "Cài đặt")
-        val labels = listOf("Cỡ chữ", "Ngôn ngữ", "Giao diện", "Kiểm tra cập nhật", "Giới thiệu")
+        val labels = listOf("Cỡ chữ", "Ngôn ngữ và giao diện", "Kiểm tra cập nhật", "Giới thiệu")
         assertEquals(labels, rows.map { it.contentDescription.toString() })
-        listOf(0, 3, 4).forEach { index ->
+        listOf(0, 2, 3).forEach { index ->
             val row = rows[index]
             val label = labels[index]
             assertTrue(views(row).filterIsInstance<TextView>().any { it.text.toString() == label })
         }
         assertEquals(listOf("VN", "EN"), views(rows[1]).filterIsInstance<TextView>().map { it.text.toString() })
-        assertEquals(listOf("Ngày", "Đêm"), views(rows[2]).filterIsInstance<TextView>().map { it.text.toString() })
-        assertTrue("Update must use a distinct vector icon", rows[3].getChildAt(0) is ImageView)
+        assertEquals(listOf("Ngày", "Đêm"), views(rows[1]).filterIsInstance<ImageButton>().map { it.contentDescription.toString() })
+        assertTrue(views(rows[1]).single { it.contentDescription == "VN" }.isSelected)
+        assertTrue("Update must use a distinct vector icon", rows[2].getChildAt(0) is ImageView)
         rows.last().performClick()
         assertFalse(popup.isShowing)
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
@@ -269,7 +271,7 @@ class ReaderControlsTest {
             assertTrue(texts.contains("Chapter 2"))
             assertFalse(texts.contains("Chương 2"))
             val (_, rows) = menuRows(activity, "Settings")
-            assertEquals(listOf("Font", "Language", "Appearance", "Check for updates", "About"),
+            assertEquals(listOf("Font", "Language and appearance", "Check for updates", "About"),
                 rows.map { it.contentDescription.toString() })
             rows.last().performClick()
             val dialog = ShadowAlertDialog.getLatestAlertDialog()
@@ -300,6 +302,7 @@ class ReaderControlsTest {
         assertEquals("VIE1925", preferences.getString("textVersion", "VIE1925"))
         assertFalse(PlaybackStateStore.playWhenReady)
         val (_, englishRows) = menuRows(activity, "Settings")
+        assertTrue(views(englishRows[1]).single { it.contentDescription == "EN" }.isSelected)
         views(englishRows[1]).single { it.contentDescription == "VN" }.performClick()
         assertNotNull(control(activity, "Chọn sách"))
         assertEquals("vi", preferences.getString("uiLanguage", null))
@@ -310,13 +313,13 @@ class ReaderControlsTest {
         PlaybackStateStore.playWhenReady = true
         withReader { activity ->
             val (_, rows) = menuRows(activity, "Cài đặt")
-            views(rows[2]).single { it.contentDescription == "Đêm" }.performClick()
+            views(rows[1]).single { it.contentDescription == "Đêm" }.performClick()
             assertEquals("dark", preferences.getString("themeMode", null))
             assertTrue(PlaybackStateStore.isPlaying)
             val (_, darkRows) = menuRows(activity, "Cài đặt")
-            assertTrue(views(darkRows[2]).single { it.contentDescription == "Đêm" }.isSelected)
-            assertFalse(views(darkRows[2]).filterIsInstance<TextView>().any { it.text.toString().contains("hệ thống") })
-            views(darkRows[2]).single { it.contentDescription == "Ngày" }.performClick()
+            assertTrue(views(darkRows[1]).single { it.contentDescription == "Đêm" }.isSelected)
+            assertFalse(views(darkRows[1]).filterIsInstance<TextView>().any { it.text.toString().contains("hệ thống") })
+            views(darkRows[1]).single { it.contentDescription == "Ngày" }.performClick()
             assertEquals("light", preferences.getString("themeMode", null))
             assertTrue(PlaybackStateStore.playWhenReady)
         }
@@ -330,26 +333,32 @@ class ReaderControlsTest {
         assertFalse(PlaybackStateStore.playWhenReady)
     }
 
-    @Test fun timerCountdownRunsInPlayerAndOrganizedTimerDialog() {
+    @Test fun timerCountdownUpdatesInWholeMinutesInPlayerAndDialog() {
         SleepTimer.start(RuntimeEnvironment.getApplication(), 15)
         withReader { activity ->
-            assertTrue(views(root(activity)).filterIsInstance<TextView>().any { it.text.toString() == "15:00" })
+            assertTrue(views(root(activity)).filterIsInstance<TextView>().any { it.text.toString() == "15 ph" })
             control(activity, "Hẹn giờ tắt").performClick()
             val dialog = ShadowAlertDialog.getLatestAlertDialog()
             val countdown = views(dialog.window!!.decorView).single { it.tag == "sleepCountdown" } as TextView
-            assertEquals("15:00", countdown.text.toString())
+            assertEquals("15 ph", countdown.text.toString())
             val choices = views(dialog.window!!.decorView).filterIsInstance<Button>()
             assertTrue(choices.any { it.text.toString() == "4 giờ" })
             assertTrue(choices.any { it.text.toString() == "8 giờ" })
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            assertEquals("15 ph", countdown.text.toString())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
             shadowOf(Looper.getMainLooper()).idle()
-            val remaining = SleepTimer.countdown()
-            assertNotEquals("15:00", remaining)
+            val remaining = SleepTimer.countdown(activity)
+            assertEquals("14 ph", remaining)
             assertEquals(remaining, countdown.text.toString())
             assertTrue(views(root(activity)).filterIsInstance<TextView>().any { it.text.toString() == remaining })
+            SleepTimer.start(activity, 30)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            assertEquals("30 ph", countdown.text.toString())
+            assertTrue(choices.single { it.text.toString() == "30 phút" }.isSelected)
             dialog.dismiss()
             val stoppedText = countdown.text.toString()
-            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
             assertEquals("Dismissed dialog must stop ticking", stoppedText, countdown.text.toString())
         }
     }
@@ -363,11 +372,11 @@ class ReaderControlsTest {
             val dialog = ShadowAlertDialog.getLatestAlertDialog()
             val countdown = views(dialog.window!!.decorView).single { it.tag == "sleepCountdown" } as TextView
             controller.pause()
-            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
-            assertEquals("15:00", countdown.text.toString())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(2))
+            assertEquals("15 ph", countdown.text.toString())
             controller.resume()
             shadowOf(Looper.getMainLooper()).idle()
-            assertEquals(SleepTimer.countdown(), countdown.text.toString())
+            assertEquals(SleepTimer.countdown(activity), countdown.text.toString())
             assertTrue(SleepTimer.remainingMs() < 900_000)
             dialog.dismiss()
         } finally {

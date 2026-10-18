@@ -43,17 +43,16 @@ object SleepTimer {
         (PlaybackStateStore.sleepDeadlineElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0)
     } else 0
 
-    fun countdown(): String {
-        val seconds = (remainingMs() + 999) / 1_000
-        val hours = seconds / 3_600
-        val minutes = seconds / 60 % 60
-        val rest = (seconds % 60).toString().padStart(2, '0')
-        return if (hours > 0) "$hours:${minutes.toString().padStart(2, '0')}:$rest" else "$minutes:$rest"
+    fun remainingMinutes(): Long = (remainingMs() + 59_999) / 60_000
+
+    fun countdown(context: Context): String {
+        val minutes = remainingMinutes()
+        return UiLanguage.text(context, "$minutes ph", "$minutes min")
     }
 
     fun nextDisplayDelayMs(): Long {
         val remaining = remainingMs()
-        if (remaining == 0L) return 1_000
-        return ((remaining - 1) % 1_000) + 1
+        if (remaining == 0L) return 60_000
+        return ((remaining - 1) % 60_000) + 1
     }
 }

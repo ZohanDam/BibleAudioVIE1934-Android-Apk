@@ -41,6 +41,8 @@ class AudioPlayerService : Service() {
     private var playbackGeneration = 0
     private var resumeAfterFocusGain = false
     private var prepared = false
+    private var buffering = false
+    private var lastPositionSaveElapsed = 0L
 
     private val becomingNoisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -193,6 +195,7 @@ class AudioPlayerService : Service() {
         resumeAfterFocusGain = false
         PlaybackStateStore.currentOrder = chapter.globalOrder
         PlaybackStateStore.positionMs = 0
+        PlaybackStateStore.positionUpdatedElapsed = 0
         PlaybackStateStore.durationMs = 0
         PlaybackStateStore.isPlaying = false
         preferences.edit().putInt(KEY_LAST_ORDER, chapter.globalOrder)
@@ -249,7 +252,22 @@ class AudioPlayerService : Service() {
                 }
             }
             player.setOnSeekCompleteListener {
-                if (generation == playbackGeneration && mediaPlayer === it) updatePlaybackState()
+                if (generation == playbackGeneration && mediaPlayer === it) {
+                    savePlaybackPosition()
+                    updatePlaybackState()
+                }
+            }
+            player.setOnInfoListener { source, what, _ ->
+                if (generation != playbackGeneration || mediaPlayer !== source) return@setOnInfoListener false
+                when (what) {
+                    MediaPlayer.MEDIA_INFO_BUFFERING_START, MediaPlayer.MEDIA_INFO_BUFFERING_END -> {
+                        buffering = what == MediaPlayer.MEDIA_INFO_BUFFERING_START
+                        updatePlaybackState()
+                        updateNotification()
+                        true
+                    }
+                    else -> false
+                }
             }
             player.setOnCompletionListener {
                 if (generation != playbackGeneration || !PlaybackStateStore.playWhenReady) return@setOnCompletionListener
@@ -361,6 +379,7 @@ class AudioPlayerService : Service() {
         PlaybackStateStore.speed = speed.coerceIn(0.5f, 2.0f)
         preferences.edit().putFloat(KEY_SPEED, PlaybackStateStore.speed).apply()
         applySpeed()
+        updatePlaybackState()
         updateNotification()
     }
 
@@ -426,15 +445,18 @@ class AudioPlayerService : Service() {
         updateNotification()
     }
 
-    private fun savePlaybackPosition() {
+    private fun savePlaybackPosition(force: Boolean = true) {
         val chapter = currentChapter ?: return
         val player = mediaPlayer ?: return
         if (!prepared) return
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastPositionSaveElapsed < POSITION_SAVE_INTERVAL_MS) return
         try {
             if (player.duration > 0) {
                 preferences.edit()
                     .putLong(chapter.positionKey, player.currentPosition.toLong())
                     .apply()
+                lastPositionSaveElapsed = now
             }
         } catch (_: IllegalStateException) {
         }
@@ -442,6 +464,7 @@ class AudioPlayerService : Service() {
 
     private fun releasePlayer() {
         prepared = false
+        buffering = false
         try {
             mediaPlayer?.reset()
             mediaPlayer?.release()
@@ -475,13 +498,13 @@ class AudioPlayerService : Service() {
     private val progressRunnable = object : Runnable {
         override fun run() {
             if (expireSleepIfNeeded()) return
-            updatePlaybackState()
-            savePlaybackPosition()
-            if (PlaybackStateStore.isPlaying) handler.postDelayed(this, 1_000)
+            updatePlaybackState(publishSession = false)
+            savePlaybackPosition(force = false)
+            if (PlaybackStateStore.isPlaying) handler.postDelayed(this, PROGRESS_INTERVAL_MS)
         }
     }
 
-    private fun updatePlaybackState() {
+    private fun updatePlaybackState(publishSession: Boolean = true) {
         val player = mediaPlayer
         PlaybackStateStore.currentOrder = currentChapter?.globalOrder
             ?: preferences.getInt(KEY_LAST_ORDER, 1)
@@ -494,10 +517,11 @@ class AudioPlayerService : Service() {
             PlaybackStateStore.positionMs = 0
             PlaybackStateStore.durationMs = 0
         }
-        preferences.edit()
-            .putBoolean(KEY_WAS_PLAYING, PlaybackStateStore.playWhenReady)
-            .apply()
-        updateMediaSession()
+        PlaybackStateStore.positionUpdatedElapsed = if (buffering) 0 else SystemClock.elapsedRealtime()
+        if (preferences.getBoolean(KEY_WAS_PLAYING, false) != PlaybackStateStore.playWhenReady) {
+            preferences.edit().putBoolean(KEY_WAS_PLAYING, PlaybackStateStore.playWhenReady).apply()
+        }
+        if (publishSession) updateMediaSession()
     }
 
     private fun startInForeground() {
@@ -605,7 +629,9 @@ class AudioPlayerService : Service() {
             PlaybackState.ACTION_REWIND or
             PlaybackState.ACTION_SEEK_TO or
             PlaybackState.ACTION_STOP
-        val state = if (PlaybackStateStore.isPlaying) {
+        val state = if (PlaybackStateStore.isPlaying && buffering) {
+            PlaybackState.STATE_BUFFERING
+        } else if (PlaybackStateStore.isPlaying) {
             PlaybackState.STATE_PLAYING
         } else {
             PlaybackState.STATE_PAUSED
@@ -618,7 +644,7 @@ class AudioPlayerService : Service() {
             .setState(
                 state,
                 PlaybackStateStore.positionMs.toLong(),
-                PlaybackStateStore.speed
+                if (state == PlaybackState.STATE_PLAYING) PlaybackStateStore.speed else 0f
             )
             .build()
     }
@@ -673,5 +699,7 @@ class AudioPlayerService : Service() {
         private const val CHANNEL_ID = "bible_playback"
         private const val NOTIFICATION_ID = 1925
         private const val SLEEP_TOKEN = "sleep_timer"
+        private const val PROGRESS_INTERVAL_MS = 5_000L
+        private const val POSITION_SAVE_INTERVAL_MS = 15_000L
     }
 }

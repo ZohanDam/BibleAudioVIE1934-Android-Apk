@@ -52,7 +52,8 @@ Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
 - Nut thu gon ngay trong bang audio an bang dieu khien, khong dung audio.
 - Ban NIV hien "Chapter" o tieu de chuong; ban tieng Viet van hien "Chuong".
 - Doc text offline, doi co chu.
-- Menu banh rang: Co chu, hai nut VN/EN, hai nut Ngay/Dem, Kiem tra cap nhat, Gioi thieu.
+- Menu banh rang: Co chu, mot hang gon VN/EN va bieu tuong mat troi/mat trang,
+  Kiem tra cap nhat, Gioi thieu. Giu nguyen kieu dong cua cac muc con lai.
 - Ngon ngu giao dien doc lap voi ban dich Kinh Thanh; lua chon duoc ghi nho.
 - Ngay/Dem doi ngay trong menu, khong mo hop thoai va khong theo he thong.
 - Gioi thieu nam cuoi menu, co tieu de va cac muc noi dung/audio/nguon rieng.
@@ -74,10 +75,31 @@ Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
 - Notification va lock screen: lui 15 giay, phat/tam dung, chuong sau.
   Android 13+ lay nut tu MediaSession; cac ban cu dung ba notification actions.
 - Hen gio co cac moc 15/30/60/90/120/240/480 phut va dem nguoc truc tiep
-  trong bang audio va hop hen gio. Dung dong ho monotonic, khong them wake lock.
+  theo phut trong bang audio va hop hen gio, khong hien giay.
+  Dung dong ho monotonic, khong them wake lock; thoi diem tat van giu chinh xac.
 - Deadline hen gio duoc luu de khong tu phat lai sau khi het gio va service bi tao lai.
   Hen gio cu bi huy khi thiet bi khoi dong lai.
 - Tu dong chuyen chuong va ghi nho vi tri nghe.
+
+## Hieu Nang
+
+- APK khoang 9,65 MB. Phan lon la 3 ban van nen; database sau khi giai nen
+  la 28,57 MB. Audio tai rieng, khong tinh vao kich thuoc APK.
+- MediaPlayer giai ma audio bang API Android; khong co WebView hay engine UI rieng.
+- Service lay mau vi tri moi 5 giay thay vi 1 giay. Thanh tien trinh van cap nhat
+  moi giay khi mo app, noi suy theo toc do va duoc hieu chinh tu mau that.
+- Khong gui lai media metadata moi giay. MediaSession cap nhat khi co thao tac
+  hoac doi trang thai; Android tu chay thanh tien trinh tren lock screen.
+- Luu vi tri dinh ky khoang 15 giay thay vi moi giay; luu ngay khi tam dung,
+  tua, chuyen chuong va dong service. Neu tien trinh bi kill dot ngot, co the
+  mat toi da khoang 20 giay vi tri nghe, khong mat tep audio da tai.
+- Hen gio chi co mot callback tat. Hop hen gio cap nhat theo phut va dung cap nhat
+  khi app bi an. UI ticker cung dung khi app bi an; khong tham do cap nhat app nen.
+- Wake lock phat audio chi do MediaPlayer quan ly de nghe khi tat man hinh.
+  Khong them wake lock rieng cho hen gio. Tai audio dung toi da 12 luong khi
+  nguoi dung yeu cau, nen ton mang/CPU hon nghe tep offline da tai.
+- Chua co so do RAM, CPU hay pin tren dien thoai that; kich thuoc APK khong
+  phai phep do dien nang.
 
 ## Build
 

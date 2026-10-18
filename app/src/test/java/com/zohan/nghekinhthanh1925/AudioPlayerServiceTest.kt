@@ -41,6 +41,7 @@ class AudioPlayerServiceTest {
         PlaybackStateStore.playWhenReady = false
         PlaybackStateStore.audioVersion = "VIE1925"
         PlaybackStateStore.positionMs = 0
+        PlaybackStateStore.positionUpdatedElapsed = 0
         PlaybackStateStore.durationMs = 0
         PlaybackStateStore.speed = 1f
         PlaybackStateStore.sleepDeadlineElapsed = 0
@@ -251,7 +252,7 @@ class AudioPlayerServiceTest {
         select(1, "VIE1925", true)
         prepare()
         timer(1)
-        assertEquals("1:00", SleepTimer.countdown())
+        assertEquals("1 ph", SleepTimer.countdown(service))
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
         assertFalse(PlaybackStateStore.isPlaying)
         assertFalse(PlaybackStateStore.playWhenReady)
@@ -264,7 +265,7 @@ class AudioPlayerServiceTest {
         prepare()
         timer(15)
         timer(480)
-        assertEquals("8:00:00", SleepTimer.countdown())
+        assertEquals("480 ph", SleepTimer.countdown(service))
         assertEquals(480, PlaybackStateStore.sleepMinutes)
         timer(0)
         assertEquals(0L, PlaybackStateStore.sleepDeadlineElapsed)
@@ -290,6 +291,80 @@ class AudioPlayerServiceTest {
         Settings.Global.putInt(service.contentResolver, Settings.Global.BOOT_COUNT, 123)
         SleepTimer.restore(service)
         assertEquals(0L, PlaybackStateStore.sleepDeadlineElapsed)
+    }
+
+    @Test fun playbackCheckpointsAreThrottledButPauseSavesImmediately() {
+        select(1, "VIE1925", true)
+        prepare()
+        val state = service.getSharedPreferences("state", Context.MODE_PRIVATE)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10))
+        assertEquals(0L, state.getLong("position_1", -1))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
+        val checkpoint = state.getLong("position_1", -1)
+        assertTrue(checkpoint >= 10_000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        action(AudioPlayerService.ACTION_PAUSE)
+        assertTrue(state.getLong("position_1", -1) > checkpoint)
+        assertEquals(player()!!.currentPosition.toLong(), state.getLong("position_1", -1))
+    }
+
+    @Test fun sparseProgressSamplesStillProduceSmoothPositionAndStopWhenPaused() {
+        select(1, "VIE1925", true)
+        prepare()
+        val sample = PlaybackStateStore.positionMs
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertEquals(sample, PlaybackStateStore.positionMs)
+        assertTrue(PlaybackStateStore.displayPositionMs() >= sample + 2_000)
+        action(AudioPlayerService.ACTION_PAUSE)
+        val paused = PlaybackStateStore.displayPositionMs()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertEquals(paused, PlaybackStateStore.displayPositionMs())
+    }
+
+    @Test fun minuteDisplayRoundsUpAndSchedulesOnlyTheNextMinuteBoundary() {
+        timer(480)
+        assertEquals(480L, SleepTimer.remainingMinutes())
+        assertEquals(60_000L, SleepTimer.nextDisplayDelayMs())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(20))
+        assertEquals(480L, SleepTimer.remainingMinutes())
+        assertEquals(40_000L, SleepTimer.nextDisplayDelayMs())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(40))
+        assertEquals(479L, SleepTimer.remainingMinutes())
+        UiLanguage.set(service, true)
+        assertEquals("479 min", SleepTimer.countdown(service))
+    }
+
+    private fun sessionState(): PlaybackState =
+        AudioPlayerService::class.java.getDeclaredMethod("buildMediaPlaybackState").apply {
+            isAccessible = true
+        }.invoke(service) as PlaybackState
+
+    @Test fun progressEstimateRespectsSpeedAndChapterDuration() {
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1))
+        PlaybackStateStore.positionMs = 1_000
+        PlaybackStateStore.positionUpdatedElapsed = SystemClock.elapsedRealtime()
+        PlaybackStateStore.durationMs = 60_000
+        PlaybackStateStore.speed = 1.5f
+        PlaybackStateStore.isPlaying = true
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertEquals(4_000, PlaybackStateStore.displayPositionMs())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+        assertEquals(60_000, PlaybackStateStore.displayPositionMs())
+    }
+
+    @Test fun streamingBufferEventsSuspendAndRestoreProgressEstimation() {
+        select(1, "NIV", true)
+        prepare()
+        shadowOf(player()!!).invokeInfoListener(MediaPlayer.MEDIA_INFO_BUFFERING_START, 0)
+        assertEquals(PlaybackState.STATE_BUFFERING, sessionState().state)
+        assertEquals(0f, sessionState().playbackSpeed)
+        assertEquals(0L, PlaybackStateStore.positionUpdatedElapsed)
+        assertEquals(PlaybackStateStore.positionMs, PlaybackStateStore.displayPositionMs())
+        shadowOf(player()!!).invokeInfoListener(MediaPlayer.MEDIA_INFO_BUFFERING_END, 0)
+        assertEquals(PlaybackState.STATE_PLAYING, sessionState().state)
+        assertTrue(PlaybackStateStore.positionUpdatedElapsed > 0)
+        action(AudioPlayerService.ACTION_PAUSE)
+        assertEquals(0f, sessionState().playbackSpeed)
     }
 
     @Test @Config(sdk = [34]) fun android14SessionAndNotificationExposeRewindPlayNext() {

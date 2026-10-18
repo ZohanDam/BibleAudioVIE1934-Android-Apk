@@ -63,6 +63,7 @@ class MainActivity : Activity() {
     private var playerTimerView: TextView? = null
     private var playerTimerButton: View? = null
     private var timerDialogRefresh: Runnable? = null
+    private var timerDialogDeadline = 0L
     private var playerPlayButton: ImageButton? = null
     private var playerProgressView: SeekBar? = null
     private var playerBarView: View? = null
@@ -327,7 +328,7 @@ class MainActivity : Activity() {
         timeline.addView(playerPositionView, LinearLayout.LayoutParams(dp(46), dp(34)))
         playerProgressView = SeekBar(this).apply {
             max = max(PlaybackStateStore.durationMs, 1)
-            progress = PlaybackStateStore.positionMs.coerceIn(0, max)
+            progress = PlaybackStateStore.displayPositionMs().coerceIn(0, max)
             progressTintList = android.content.res.ColorStateList.valueOf(colorAccent)
             thumbTintList = android.content.res.ColorStateList.valueOf(colorAccent)
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(colorBorder)
@@ -463,6 +464,7 @@ class MainActivity : Activity() {
         PlaybackStateStore.playWhenReady = continuePlaying
         PlaybackStateStore.currentOrder = chapter.globalOrder
         PlaybackStateStore.positionMs = 0
+        PlaybackStateStore.positionUpdatedElapsed = 0
         PlaybackStateStore.durationMs = 0
         PlaybackStateStore.isPlaying = false
         preferences.edit().putInt(KEY_LAST_ORDER, chapter.globalOrder)
@@ -771,9 +773,10 @@ class MainActivity : Activity() {
             .create()
         val refresh = object : Runnable {
             override fun run() {
+                timerDialogDeadline = PlaybackStateStore.sleepDeadlineElapsed
                 val active = SleepTimer.remainingMs() > 0
                 status.text = if (active) uiText("Còn lại", "Time remaining") else uiText("Chọn thời gian", "Choose a duration")
-                countdown.text = if (active) SleepTimer.countdown() else uiText("Hẹn giờ đã tắt", "Timer off")
+                countdown.text = if (active) SleepTimer.countdown(this@MainActivity) else uiText("Hẹn giờ đã tắt", "Timer off")
                 countdown.textSize = if (active) 28f else 20f
                 buttons.forEach { (minutes, button) ->
                     val selected = active && PlaybackStateStore.sleepMinutes == minutes
@@ -783,7 +786,7 @@ class MainActivity : Activity() {
                 }
                 dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isEnabled = active
                 updatePlayerBar()
-                handler.postDelayed(this, SleepTimer.nextDisplayDelayMs())
+                if (active) handler.postDelayed(this, SleepTimer.nextDisplayDelayMs())
             }
         }
         timerDialogRefresh?.let { handler.removeCallbacks(it) }
@@ -922,10 +925,12 @@ class MainActivity : Activity() {
         }
         val offline = downloads.availableFile(displayedChapter) != null
         playerOfflineView?.text = if (offline) "Offline" else "Online"
-        playerPositionView?.text = formatTime(PlaybackStateStore.positionMs)
+        val position = PlaybackStateStore.displayPositionMs()
+        playerPositionView?.text = formatTime(position)
         playerDurationView?.text = formatTime(PlaybackStateStore.durationMs)
         playerSpeedView?.text = formatSpeed(PlaybackStateStore.speed)
-        playerTimerView?.text = if (SleepTimer.remainingMs() > 0) SleepTimer.countdown() else uiText("Hẹn giờ", "Timer")
+        val timerText = if (SleepTimer.remainingMs() > 0) SleepTimer.countdown(this) else uiText("Hẹn giờ", "Timer")
+        if (playerTimerView?.text?.toString() != timerText) playerTimerView?.text = timerText
         playerTimerButton?.contentDescription = uiText("Hẹn giờ tắt", "Sleep timer")
         playerPlayButton?.setImageResource(
             if (PlaybackStateStore.isPlaying || PlaybackStateStore.playWhenReady) {
@@ -936,7 +941,7 @@ class MainActivity : Activity() {
         )
         playerProgressView?.takeUnless { isSeeking }?.let {
             it.max = max(PlaybackStateStore.durationMs, 1)
-            it.progress = PlaybackStateStore.positionMs.coerceIn(0, it.max)
+            it.progress = position.coerceIn(0, it.max)
         }
     }
 
@@ -968,7 +973,14 @@ class MainActivity : Activity() {
                 }
             }
             updatePlayerBar()
-            handler.postDelayed(this, SleepTimer.nextDisplayDelayMs())
+            if (timerDialogDeadline != PlaybackStateStore.sleepDeadlineElapsed) {
+                timerDialogRefresh?.let {
+                    timerDialogDeadline = PlaybackStateStore.sleepDeadlineElapsed
+                    handler.removeCallbacks(it)
+                    handler.post(it)
+                }
+            }
+            handler.postDelayed(this, 1_000)
         }
     }
 
@@ -1004,16 +1016,8 @@ class MainActivity : Activity() {
                 popup?.dismiss()
                 showFontSizeDialog()
             })
-            addView(inlineSettingsChoices(uiText("Ngôn ngữ", "Language"),
-                listOf("VN", "EN"), if (UiLanguage.isEnglish(this@MainActivity)) 1 else 0) { index ->
+            addView(readerSettingsChoices {
                 popup?.dismiss()
-                UiLanguage.set(this@MainActivity, index == 1)
-                refreshReaderOptions()
-            })
-            addView(inlineSettingsChoices(uiText("Giao diện", "Appearance"),
-                listOf(uiText("Ngày", "Day"), uiText("Đêm", "Night")), if (darkMode) 1 else 0) { index ->
-                popup?.dismiss()
-                preferences.edit().putString(KEY_THEME_MODE, if (index == 1) "dark" else "light").apply()
                 refreshReaderOptions()
             })
             addView(settingsMenuItem("", uiText("Kiểm tra cập nhật", "Check for updates"),
@@ -1069,11 +1073,12 @@ class MainActivity : Activity() {
         readerScrollView?.post { readerScrollView?.scrollTo(0, scrollPosition) }
     }
 
-    private fun inlineSettingsChoices(description: String, labels: List<String>, selected: Int, action: (Int) -> Unit): View {
+    private fun readerSettingsChoices(changed: () -> Unit): View {
         return horizontal().apply {
-            contentDescription = description
+            contentDescription = uiText("Ngôn ngữ và giao diện", "Language and appearance")
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(4), dp(8), dp(4))
-            labels.forEachIndexed { index, label ->
+            listOf("VN", "EN").forEachIndexed { index, label ->
                 addView(TextView(this@MainActivity).apply {
                     text = label
                     contentDescription = label
@@ -1081,11 +1086,34 @@ class MainActivity : Activity() {
                     gravity = Gravity.CENTER
                     setTextColor(colorText)
                     setTypeface(typeface, Typeface.BOLD)
-                    isSelected = index == selected
-                    background = rounded(if (isSelected) colorSelection else colorBackground, colorBorder)
-                    setOnClickListener { action(index) }
-                }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+                    isSelected = UiLanguage.isEnglish(this@MainActivity) == (index == 1)
+                    background = rounded(if (isSelected) colorSelection else Color.TRANSPARENT, Color.TRANSPARENT, 6)
+                    setOnClickListener {
+                        UiLanguage.set(this@MainActivity, index == 1)
+                        changed()
+                    }
+                }, LinearLayout.LayoutParams(dp(44), dp(44)))
             }
+            addView(View(this@MainActivity).apply { setBackgroundColor(colorBorder) },
+                LinearLayout.LayoutParams(dp(1), dp(20)).apply {
+                    leftMargin = dp(8)
+                    rightMargin = dp(8)
+                })
+            listOf(R.drawable.ic_sun to uiText("Ngày", "Day"), R.drawable.ic_moon to uiText("Đêm", "Night"))
+                .forEachIndexed { index, (icon, description) ->
+                    addView(ImageButton(this@MainActivity).apply {
+                        setImageResource(icon)
+                        imageTintList = android.content.res.ColorStateList.valueOf(colorText)
+                        scaleType = ImageView.ScaleType.CENTER
+                        contentDescription = description
+                        isSelected = darkMode == (index == 1)
+                        background = rounded(if (isSelected) colorSelection else Color.TRANSPARENT, Color.TRANSPARENT, 6)
+                        setOnClickListener {
+                            preferences.edit().putString(KEY_THEME_MODE, if (index == 1) "dark" else "light").apply()
+                            changed()
+                        }
+                    }, LinearLayout.LayoutParams(dp(44), dp(44)))
+                }
             layoutParams = matchWrap()
         }
     }

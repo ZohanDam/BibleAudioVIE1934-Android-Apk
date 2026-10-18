@@ -50,8 +50,17 @@ object PlaybackStateStore {
     @Volatile var currentOrder: Int = 0
     @Volatile var isPlaying: Boolean = false
     @Volatile var positionMs: Int = 0
+    @Volatile var positionUpdatedElapsed: Long = 0
     @Volatile var durationMs: Int = 0
     @Volatile var speed: Float = 1.0f
     @Volatile var sleepDeadlineElapsed: Long = 0
     @Volatile var sleepMinutes: Int = 0
+
+    fun displayPositionMs(): Int {
+        if (!isPlaying || positionUpdatedElapsed == 0L) return positionMs
+        // Keep the visible seek bar smooth between native-player samples.
+        val elapsed = (android.os.SystemClock.elapsedRealtime() - positionUpdatedElapsed).coerceAtLeast(0)
+        return (positionMs.toLong() + (elapsed * speed).toLong())
+            .coerceIn(0, durationMs.coerceAtLeast(0).toLong()).toInt()
+    }
 }
