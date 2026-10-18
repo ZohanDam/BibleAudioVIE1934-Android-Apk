@@ -9,6 +9,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.LinearLayout
+import android.widget.ImageButton
+import android.widget.ImageView
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -91,8 +93,7 @@ class ReaderControlsTest {
     @Test fun hiddenPlayerKeepsSmallArrowsAndPausedNavigation() = withReader { activity ->
         control(activity, "Ẩn bảng điều khiển").performClick()
         assertFalse(views(root(activity)).any { it.contentDescription == "Phát hoặc tạm dừng" })
-        assertTrue((control(activity, "Chương sau") as TextView).textSize <
-            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 30f, activity.resources.displayMetrics))
+        assertChapterIcons(activity)
         assertFalse(control(activity, "Chương trước").isEnabled)
         control(activity, "Chương sau").performClick()
         assertEquals(2, PlaybackStateStore.currentOrder)
@@ -161,6 +162,8 @@ class ReaderControlsTest {
             assertEquals("NIV", PlaybackStateStore.audioVersion)
             assertEquals(929, PlaybackStateStore.currentOrder)
             assertFalse(PlaybackStateStore.playWhenReady)
+            val chapter = (control(activity, "Chọn chương") as TextView).text
+            assertTrue(views(root(activity)).filterIsInstance<TextView>().any { it.text.toString() == "Chapter $chapter" })
             assertNotNull(control(activity, "Hiện bảng điều khiển"))
             control(activity, "Chọn bản dịch").performClick()
             val reopened = ShadowAlertDialog.getLatestAlertDialog()
@@ -185,6 +188,97 @@ class ReaderControlsTest {
             assertEquals(5_000, PlaybackStateStore.positionMs)
             assertTrue(PlaybackStateStore.playWhenReady)
             assertTrue(PlaybackStateStore.isPlaying)
+        }
+    }
+
+    private fun assertChapterIcons(activity: MainActivity) {
+        for (description in listOf("Chương trước", "Chương sau")) {
+            val button = control(activity, description) as ImageButton
+            assertNull("Chapter arrows must remain borderless", button.background)
+            assertEquals(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 32f,
+                activity.resources.displayMetrics).toInt(), button.drawable.intrinsicWidth)
+        }
+    }
+
+    @Test fun bothPlayerStatesHaveLargerChapterIcons() = withReader { activity ->
+        assertChapterIcons(activity)
+        control(activity, "Ẩn bảng điều khiển").performClick()
+        assertChapterIcons(activity)
+    }
+
+    @Test fun collapseButtonHidesPlayerWithoutStoppingAudio() {
+        PlaybackStateStore.currentOrder = 2
+        PlaybackStateStore.isPlaying = true
+        PlaybackStateStore.playWhenReady = true
+        PlaybackStateStore.positionMs = 5_000
+        withReader { activity ->
+            control(activity, "Thu gọn bảng điều khiển").performClick()
+            assertFalse(views(root(activity)).any { it.contentDescription == "Phát hoặc tạm dừng" })
+            assertNotNull(control(activity, "Hiện bảng điều khiển"))
+            assertChapterIcons(activity)
+            assertTrue(PlaybackStateStore.isPlaying)
+            assertTrue(PlaybackStateStore.playWhenReady)
+            assertEquals(5_000, PlaybackStateStore.positionMs)
+            assertFalse(preferences.getBoolean("playerPanelVisible", true))
+            control(activity, "Hiện bảng điều khiển").performClick()
+            assertNotNull(control(activity, "Thu gọn bảng điều khiển"))
+        }
+    }
+
+    private fun menuRows(activity: MainActivity, description: String): Pair<android.widget.PopupWindow, List<LinearLayout>> {
+        assertTrue(control(activity, description) is ImageButton)
+        control(activity, description).performClick()
+        val popup = shadowOf(RuntimeEnvironment.getApplication()).latestPopupWindow
+        val rows = views(popup.contentView).filterIsInstance<LinearLayout>().filter { it.hasOnClickListeners() }
+        return popup to rows
+    }
+
+    @Test fun gearMenuHasLabeledOptionsAndStructuredAboutLast() = withReader { activity ->
+        val (popup, rows) = menuRows(activity, "Cài đặt")
+        val labels = listOf("Cỡ chữ", "Giao diện", "Kiểm tra cập nhật", "Giới thiệu")
+        assertEquals(labels, rows.map { it.contentDescription.toString() })
+        rows.zip(labels).forEach { (row, label) ->
+            assertTrue(views(row).filterIsInstance<TextView>().any { it.text.toString() == label })
+        }
+        assertTrue("Update must use a distinct vector icon", rows[2].getChildAt(0) is ImageView)
+        rows.last().performClick()
+        assertFalse(popup.isShowing)
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        val texts = views(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
+        assertTrue(texts.contains("Giới thiệu ứng dụng"))
+        val sections = listOf("Ứng dụng", "Nội dung", "Audio offline", "Nguồn và bản quyền")
+        assertTrue(sections.all { texts.contains(it) })
+        assertEquals(sections.map { texts.indexOf(it) }.sorted(), sections.map { texts.indexOf(it) })
+        assertTrue(texts.any { it.contains("bible.com") })
+        dialog.dismiss()
+    }
+
+    @Test fun nivUsesEnglishChapterHeadingAndSettingsLabels() {
+        preferences.edit().putString("textVersion", "NIV").putInt("lastOrder", 2).commit()
+        withReader { activity ->
+            val texts = views(root(activity)).filterIsInstance<TextView>().map { it.text.toString() }
+            assertTrue(texts.contains("Chapter 2"))
+            assertFalse(texts.contains("Chương 2"))
+            val (_, rows) = menuRows(activity, "Settings")
+            assertEquals(listOf("Font", "Appearance", "Check for updates", "About"),
+                rows.map { it.contentDescription.toString() })
+            rows.last().performClick()
+            val dialog = ShadowAlertDialog.getLatestAlertDialog()
+            val about = views(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
+            assertTrue(about.contains("About this app"))
+            assertTrue(about.contains("Sources and copyright"))
+            assertTrue(about.any { it.contains("Max McLean") })
+            assertTrue(about.any { it.contains("Biblica") })
+            dialog.dismiss()
+        }
+    }
+
+    @Test fun vietnameseEditionKeepsVietnameseChapterHeading() {
+        preferences.edit().putString("textVersion", "VIE2010").putInt("lastOrder", 2).commit()
+        withReader { activity ->
+            val texts = views(root(activity)).filterIsInstance<TextView>().map { it.text.toString() }
+            assertTrue(texts.contains("Chương 2"))
+            assertFalse(texts.contains("Chapter 2"))
         }
     }
 }

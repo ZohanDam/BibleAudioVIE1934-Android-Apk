@@ -65,8 +65,8 @@ class MainActivity : Activity() {
     private var playerProgressView: SeekBar? = null
     private var playerBarView: View? = null
     private var compactNavigationView: View? = null
-    private var compactPreviousView: TextView? = null
-    private var compactNextView: TextView? = null
+    private var compactPreviousView: ImageButton? = null
+    private var compactNextView: ImageButton? = null
     private var playerPanelToggleView: View? = null
     private var playerPanelVisible = true
     private var isSeeking = false
@@ -201,7 +201,9 @@ class MainActivity : Activity() {
             addView(downloadStatusButton(), LinearLayout.LayoutParams(dp(36), dp(36)).apply {
                 marginEnd = dp(2)
             })
-            addView(toolbarButton("⋮", "Tùy chọn") { showToolbarMenu(it) })
+            addView(plainIconButton(R.drawable.ic_settings, editionLabel("Cài đặt", "Settings")) {
+                showToolbarMenu(it)
+            }, LinearLayout.LayoutParams(dp(46), dp(46)))
         }
     }
 
@@ -218,7 +220,10 @@ class MainActivity : Activity() {
             setPadding(0, 0, 0, dp(4))
         })
         content.addView(TextView(this).apply {
-            text = "Chương ${currentChapter.chapter}"
+            text = getString(
+                if (selectedTextVersion == "NIV") R.string.chapter_heading_en else R.string.chapter_heading_vi,
+                currentChapter.chapter
+            )
             textSize = 18f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(colorMuted)
@@ -337,6 +342,9 @@ class MainActivity : Activity() {
         }
         timeline.addView(playerProgressView, LinearLayout.LayoutParams(0, dp(34), 1f))
         timeline.addView(playerDurationView, LinearLayout.LayoutParams(dp(46), dp(34)))
+        timeline.addView(plainIconButton(R.drawable.ic_collapse, editionLabel(
+            "Thu gọn bảng điều khiển", "Collapse audio controls"
+        )) { togglePlayerPanel() }, LinearLayout.LayoutParams(dp(44), dp(44)))
         container.addView(timeline)
 
         val transport = horizontal().apply {
@@ -347,7 +355,7 @@ class MainActivity : Activity() {
             showSpeedDialog()
         }
         transport.addView(playerSpeedView, LinearLayout.LayoutParams(dp(58), dp(54)))
-        transport.addView(transportButton("‹", "Chương trước") {
+        transport.addView(chapterButton(previous = true) {
             navigateChapter(-1)
         }, LinearLayout.LayoutParams(0, dp(54), 1f))
         playerPlayButton = mediaButton(
@@ -361,7 +369,7 @@ class MainActivity : Activity() {
             large = true
         ) { togglePlayback() }
         transport.addView(playerPlayButton)
-        transport.addView(transportButton("›", "Chương sau") {
+        transport.addView(chapterButton(previous = false) {
             navigateChapter(1)
         }, LinearLayout.LayoutParams(0, dp(54), 1f))
         transport.addView(transportOptionButton("⏱", "Hẹn giờ") {
@@ -375,10 +383,8 @@ class MainActivity : Activity() {
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(8), 0, dp(8), 0)
         setBackgroundColor(colorSurface)
-        compactPreviousView = transportButton("‹", "Chương trước") { navigateChapter(-1) }
-            .apply { textSize = 24f }
-        compactNextView = transportButton("›", "Chương sau") { navigateChapter(1) }
-            .apply { textSize = 24f }
+        compactPreviousView = chapterButton(previous = true) { navigateChapter(-1) }
+        compactNextView = chapterButton(previous = false) { navigateChapter(1) }
         addView(compactPreviousView, LinearLayout.LayoutParams(dp(48), dp(48)))
         addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
         addView(compactNextView, LinearLayout.LayoutParams(dp(48), dp(48)))
@@ -709,7 +715,7 @@ class MainActivity : Activity() {
         val labels = sizes.map { "${it.toInt()} pt" }.toTypedArray()
         val selected = sizes.indexOfFirst { it == fontSize }.coerceAtLeast(0)
         AlertDialog.Builder(this)
-            .setTitle("Cỡ chữ")
+            .setTitle(editionLabel("Cỡ chữ", "Font"))
             .setSingleChoiceItems(labels, selected) { dialog, index ->
                 fontSize = sizes[index]
                 preferences.edit().putFloat(KEY_FONT_SIZE, fontSize).apply()
@@ -722,6 +728,9 @@ class MainActivity : Activity() {
     private fun readerBookName(bookCode: String): String {
         return books.firstOrNull { it.code == bookCode }?.name ?: bookCode
     }
+
+    private fun editionLabel(vietnamese: String, english: String): String =
+        if (selectedTextVersion == "NIV") english else vietnamese
 
     private fun showTextVersionDialog() {
         var dialog: AlertDialog? = null
@@ -767,25 +776,53 @@ class MainActivity : Activity() {
     private fun showAboutDialog() {
         val summary = downloads.summary(chapters)
         val textVersion = textVersions.first { it.code == selectedTextVersion }
-        val message = SpannableStringBuilder().apply {
-            append("${summary.downloaded}/${chapters.size} chương offline\n\n")
-            append("Bản văn: ${textVersion.title} (${textVersion.code}).\n\n")
-            append("${textVersion.copyrightNotice}\n\n")
-            append("Nguồn: ${textVersion.sourceUrl}\n\n")
-            append("Audio: ${currentChapter.audioVersion}.\n\n")
-            if (currentChapter.audioVersion == "NIV") {
-                append("The Listener’s Bible®: NIV Edition. Audio © 2011 Max McLean. All rights reserved worldwide.\n\n")
-                append("Nguồn audio: https://www.bible.com/audio-bible/111/GEN.1.NIV\n\n")
-            }
-            append("Audio có thể nghe được online hoặc tải về máy để nghe offline.\n\n")
-            append(audioStorageNote() + "\n\n")
-            append("66 sách • 1.189 chương\n\n")
-            append("Ứng dụng bởi Zohan, với mong muốn nghe Kinh Thánh offline.")
+        val content = vertical().apply {
+            setPadding(dp(22), dp(4), dp(22), dp(16))
         }
+        fun section(title: String, body: String, small: Boolean = false) {
+            content.addView(sectionLabel(title).apply {
+                textSize = 15f
+                setTextColor(colorText)
+            }, matchWrap())
+            content.addView(TextView(this).apply {
+                text = body
+                textSize = if (small) 12f else 14f
+                setTextColor(if (small) colorMuted else colorText)
+                setLineSpacing(dp(3).toFloat(), 1.1f)
+                setTextIsSelectable(true)
+            }, matchWrap())
+        }
+        section(editionLabel("Ứng dụng", "The app"), editionLabel(
+            "Ứng dụng bởi Zohan, với mong muốn nghe Kinh Thánh offline.",
+            "By Zohan, for listening to the Bible offline."
+        ))
+        section(editionLabel("Nội dung", "Bible content"), editionLabel(
+            "66 sách • 1.189 chương\nBản văn: ${textVersion.code}\nAudio: ${currentChapter.audioVersion}",
+            "66 books • 1,189 chapters\nText: ${textVersion.code}\nAudio: ${currentChapter.audioVersion}"
+        ))
+        val storage = if (selectedTextVersion == "NIV") {
+            repository.nivAudioSizeBytes()?.let {
+                "Full audio download: about " + String.format(Locale.US, "%.2f GB.", it / 1_000_000_000.0)
+            } ?: "Downloaded size is shown in audio downloads."
+        } else audioStorageNote()
+        section(editionLabel("Audio offline", "Offline audio"), editionLabel(
+            "${summary.downloaded}/${chapters.size} chương đã tải.\n$storage\n" +
+                "Audio có thể nghe được online hoặc tải về máy để nghe offline.",
+            "${summary.downloaded}/${chapters.size} chapters downloaded.\n$storage\n" +
+                "Stream audio online or download it in the app to listen offline."
+        ))
+        val sources = buildString {
+            append("${textVersion.title}\n${textVersion.copyrightNotice}\n${textVersion.sourceUrl}")
+            if (currentChapter.audioVersion == "NIV") {
+                append("\n\nThe Listener’s Bible®: NIV Edition. Audio © 2011 Max McLean. All rights reserved worldwide.")
+                append("\nhttps://www.bible.com/audio-bible/111/GEN.1.NIV")
+            }
+        }
+        section(editionLabel("Nguồn và bản quyền", "Sources and copyright"), sources, small = true)
         AlertDialog.Builder(this)
-            .setTitle("Kinh Thánh Tiếng Việt 1925")
-            .setMessage(message)
-            .setPositiveButton("Đóng", null)
+            .setTitle(editionLabel("Giới thiệu ứng dụng", "About this app"))
+            .setView(ScrollView(this).apply { addView(content) })
+            .setPositiveButton(editionLabel("Đóng", "Close"), null)
             .show()
     }
 
@@ -879,22 +916,23 @@ class MainActivity : Activity() {
         val content = vertical().apply {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             background = rounded(colorSurface, colorBorder, 8)
-            addView(compactMenuItem("Aa") {
+            addView(settingsMenuItem("Aa", editionLabel("Cỡ chữ", "Font")) {
                 popup?.dismiss()
                 showFontSizeDialog()
             })
-            addView(compactMenuItem("ⓘ") {
+            addView(settingsMenuItem("◐", editionLabel("Giao diện", "Appearance")) {
+                popup?.dismiss()
+                showAppearanceDialog()
+            })
+            addView(settingsMenuItem("", editionLabel("Kiểm tra cập nhật", "Check for updates"),
+                R.drawable.ic_system_update) {
+                popup?.dismiss()
+                appUpdates.check()
+            })
+            addView(settingsMenuItem("ⓘ", editionLabel("Giới thiệu", "About")) {
                 popup?.dismiss()
                 showAboutDialog()
             })
-            addView(compactMenuItem("◐") {
-                popup?.dismiss()
-                showAppearanceDialog()
-            }.apply { contentDescription = "Giao diện" })
-            addView(compactMenuItem("↻") {
-                popup?.dismiss()
-                appUpdates.check()
-            }.apply { contentDescription = "Cập nhật ứng dụng" })
         }
         popup = PopupWindow(
             content,
@@ -942,8 +980,12 @@ class MainActivity : Activity() {
         val selected = modes.indexOf(preferences.getString(KEY_THEME_MODE, "system"))
             .coerceAtLeast(0)
         AlertDialog.Builder(this)
-            .setTitle("Giao diện")
-            .setSingleChoiceItems(arrayOf("Theo hệ thống", "Sáng", "Tối"), selected) { dialog, index ->
+            .setTitle(editionLabel("Giao diện", "Appearance"))
+            .setSingleChoiceItems(arrayOf(
+                editionLabel("Theo hệ thống", "System"),
+                editionLabel("Sáng", "Light"),
+                editionLabel("Tối", "Dark")
+            ), selected) { dialog, index ->
                 val scrollPosition = readerScrollView?.scrollY ?: 0
                 preferences.edit().putString(KEY_THEME_MODE, modes[index]).apply()
                 dialog.dismiss()
@@ -994,30 +1036,52 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun compactMenuItem(text: String, action: () -> Unit): TextView {
-        return TextView(this).apply {
-            this.text = text
-            textSize = if (text == "Aa") 17f else 21f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(colorText)
-            gravity = Gravity.CENTER
-            setPadding(dp(10), dp(7), dp(10), dp(7))
+    private fun settingsMenuItem(
+        symbol: String,
+        label: String,
+        icon: Int? = null,
+        action: () -> Unit
+    ): View {
+        return horizontal().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(48)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            contentDescription = label
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             setOnClickListener { action() }
-            layoutParams = LinearLayout.LayoutParams(dp(48), dp(40))
+            val symbolView = if (icon != null) ImageView(this@MainActivity).apply {
+                setImageResource(icon)
+                imageTintList = android.content.res.ColorStateList.valueOf(colorText)
+                scaleType = ImageView.ScaleType.CENTER
+            } else TextView(this@MainActivity).apply {
+                text = symbol
+                textSize = if (symbol == "Aa") 17f else 21f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(colorText)
+                gravity = Gravity.CENTER
+            }
+            symbolView.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            addView(symbolView, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
+            addView(TextView(this@MainActivity).apply {
+                text = label
+                textSize = 15f
+                setTextColor(colorText)
+                maxWidth = dp(200)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            layoutParams = matchWrap()
         }
     }
 
-    private fun toolbarButton(text: String, description: String, action: (View) -> Unit): TextView {
-        return TextView(this).apply {
-            this.text = text
-            textSize = 22f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(colorText)
-            gravity = Gravity.CENTER
-            setPadding(dp(6), 0, dp(6), 0)
+    private fun plainIconButton(icon: Int, description: String, action: (View) -> Unit): ImageButton {
+        return ImageButton(this).apply {
+            setImageResource(icon)
+            imageTintList = android.content.res.ColorStateList.valueOf(colorText)
+            scaleType = ImageView.ScaleType.CENTER
+            background = null
+            setPadding(0, 0, 0, 0)
             contentDescription = description
             setOnClickListener { action(it) }
-            layoutParams = LinearLayout.LayoutParams(dp(46), dp(46))
         }
     }
 
@@ -1140,21 +1204,13 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun transportButton(
-        text: String,
-        description: String,
+    private fun chapterButton(
+        previous: Boolean,
         action: () -> Unit
-    ): TextView {
-        return TextView(this).apply {
-            this.text = text
-            textSize = 30f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(colorText)
-            gravity = Gravity.CENTER
-            contentDescription = description
-            setOnClickListener { action() }
-        }
-    }
+    ): ImageButton = plainIconButton(
+        if (previous) R.drawable.ic_chapter_previous else R.drawable.ic_chapter_next,
+        if (previous) "Chương trước" else "Chương sau"
+    ) { action() }
 
     private fun transportOptionButton(
         text: String,

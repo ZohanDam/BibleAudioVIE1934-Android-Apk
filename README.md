@@ -8,6 +8,7 @@ Ban moi nhat: https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases
   Khong can tai Source code hoac update.json. Audio tai rieng trong ung dung.
 - Cai APK tu Releases mot lan de them chuc nang cap nhat trong ung dung.
 - Tu ban 2.19: menu ba cham > bieu tuong cap nhat > Tai cap nhat.
+- Tu ban 2.21: nut banh rang > Kiem tra cap nhat (Check for updates).
 - Ung dung chi kiem tra khi nguoi dung yeu cau, khong tham do nen.
 - Lan dau, Android co the yeu cau bat quyen cai ung dung tu nguon nay.
 - Android luon hien man hinh xac nhan cai dat; khong cai am tham.
@@ -47,8 +48,13 @@ Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
 - Chon Cuu Uoc, Tan Uoc, sach va chuong.
 - Sach dang chon co nen noi bat, chu dam va dau tich; khong dung mau do.
 - An bang audio bang nut loa van giu hai mui ten chuyen chuong nho.
+- Hai mui ten chuyen chuong dung vector day, ro hon o ca hai che do audio.
+- Nut thu gon ngay trong bang audio an bang dieu khien, khong dung audio.
+- Ban NIV hien "Chapter" o tieu de chuong; ban tieng Viet van hien "Chuong".
 - Doc text offline, doi co chu.
-- Menu ba cham > bieu tuong giao dien: Theo he thong, Sang, Toi.
+- Menu banh rang co nhan: Co chu, Giao dien, Kiem tra cap nhat, Gioi thieu.
+- Giao dien: Theo he thong, Sang, Toi.
+- Gioi thieu nam cuoi menu, co tieu de va cac muc noi dung/audio/nguon rieng.
 - Ghi nho giao dien; doi giao dien khong khoi dong lai audio.
 - Nut ban dich nam duoi tieu de chuong. Doi ban dich giu nguyen sach/chuong,
   khong bat dau audio khi dang tam dung va ghi nho lua chon.

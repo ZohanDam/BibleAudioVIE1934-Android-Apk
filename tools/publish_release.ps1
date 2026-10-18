@@ -74,7 +74,7 @@ $manifest = [ordered]@{
 }
 $releaseBody = @{
     tag_name="v$version"; target_commitish=$SourceCommit; name="Kinh Thanh $version"
-    body=$Notes + "`n`nInstall this APK over version 2.15 or later. Do not uninstall: offline audio and settings are retained.`n`nAfter this installation: three-dot menu > update icon. Android installation confirmation is required."
+    body=$Notes + "`n`nInstall this APK over version 2.15 or later. Do not uninstall: offline audio and settings are retained.`n`nAfter this installation: Settings (gear) > Check for updates / Kiem tra cap nhat. Android installation confirmation is required."
     draft=$true; prerelease=$false
 } | ConvertTo-Json
 $release = Invoke-RestMethod -Uri "$api/releases" -Headers $headers -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($releaseBody))
