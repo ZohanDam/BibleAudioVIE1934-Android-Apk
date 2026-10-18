@@ -52,8 +52,9 @@ Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
 - Nut thu gon ngay trong bang audio an bang dieu khien, khong dung audio.
 - Ban NIV hien "Chapter" o tieu de chuong; ban tieng Viet van hien "Chuong".
 - Doc text offline, doi co chu.
-- Menu banh rang co nhan: Co chu, Giao dien, Kiem tra cap nhat, Gioi thieu.
-- Giao dien: Theo he thong, Sang, Toi.
+- Menu banh rang: Co chu, hai nut VN/EN, hai nut Ngay/Dem, Kiem tra cap nhat, Gioi thieu.
+- Ngon ngu giao dien doc lap voi ban dich Kinh Thanh; lua chon duoc ghi nho.
+- Ngay/Dem doi ngay trong menu, khong mo hop thoai va khong theo he thong.
 - Gioi thieu nam cuoi menu, co tieu de va cac muc noi dung/audio/nguon rieng.
 - Ghi nho giao dien; doi giao dien khong khoi dong lai audio.
 - Nut ban dich nam duoi tieu de chuong. Doi ban dich giu nguyen sach/chuong,
@@ -69,6 +70,13 @@ Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
 - Tai mot chuong, mot sach, hoac ca 66 sach.
 - Audio da tai duoc giu den khi nguoi dung xoa.
 - Phat nen, media notification, tua, toc do va hen gio tat.
+- Bang audio thu gon co nut mo rong, ben canh hai mui ten chuyen chuong.
+- Notification va lock screen: lui 15 giay, phat/tam dung, chuong sau.
+  Android 13+ lay nut tu MediaSession; cac ban cu dung ba notification actions.
+- Hen gio co cac moc 15/30/60/90/120/240/480 phut va dem nguoc truc tiep
+  trong bang audio va hop hen gio. Dung dong ho monotonic, khong them wake lock.
+- Deadline hen gio duoc luu de khong tu phat lai sau khi het gio va service bi tao lai.
+  Hen gio cu bi huy khi thiet bi khoi dong lai.
 - Tu dong chuyen chuong va ghi nho vi tri nghe.
 
 ## Build

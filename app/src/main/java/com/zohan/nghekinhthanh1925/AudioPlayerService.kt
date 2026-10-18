@@ -18,6 +18,7 @@ import android.media.MediaPlayer
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Handler
+import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
@@ -104,6 +105,10 @@ class AudioPlayerService : Service() {
                 override fun onPause() = pausePlayback()
                 override fun onSkipToNext() = playRelative(1)
                 override fun onSkipToPrevious() = playPrevious()
+                override fun onRewind() = rewindFifteenSeconds()
+                override fun onCustomAction(action: String, extras: Bundle?) {
+                    if (action == ACTION_REWIND_15) rewindFifteenSeconds()
+                }
                 override fun onSeekTo(pos: Long) = seekTo(pos.toInt())
                 override fun onStop() = stopPlayback()
             })
@@ -114,11 +119,14 @@ class AudioPlayerService : Service() {
             IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         )
         createNotificationChannel()
+        SleepTimer.restore(this)
+        if (!expireSleepIfNeeded()) scheduleSleepCheck()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        expireSleepIfNeeded()
         if (intent == null) {
             if (preferences.getBoolean(KEY_WAS_PLAYING, false)) {
                 playOrder(
@@ -143,6 +151,8 @@ class AudioPlayerService : Service() {
             ACTION_RESUME -> resumePlayback()
             ACTION_NEXT -> playRelative(1)
             ACTION_PREVIOUS -> playPrevious()
+            ACTION_REWIND_15 -> rewindFifteenSeconds()
+            ACTION_CHECK_SLEEP -> expireSleepIfNeeded()
             ACTION_SEEK -> seekTo(intent.getIntExtra(EXTRA_POSITION, 0))
             ACTION_SPEED -> setSpeed(intent.getFloatExtra(EXTRA_SPEED, PlaybackStateStore.speed))
             ACTION_SLEEP -> scheduleSleep(intent.getIntExtra(EXTRA_MINUTES, 0))
@@ -238,6 +248,9 @@ class AudioPlayerService : Service() {
                     showPlaybackError(chapter)
                 }
             }
+            player.setOnSeekCompleteListener {
+                if (generation == playbackGeneration && mediaPlayer === it) updatePlaybackState()
+            }
             player.setOnCompletionListener {
                 if (generation != playbackGeneration || !PlaybackStateStore.playWhenReady) return@setOnCompletionListener
                 preferences.edit().putLong(chapter.positionKey, 0L).apply()
@@ -265,6 +278,7 @@ class AudioPlayerService : Service() {
     }
 
     private fun resumePlayback() {
+        if (expireSleepIfNeeded()) return
         PlaybackStateStore.playWhenReady = true
         resumeAfterFocusGain = false
         if (mediaPlayer == null) {
@@ -329,8 +343,16 @@ class AudioPlayerService : Service() {
     private fun seekTo(position: Int) {
         if (!prepared) return
         try {
-            mediaPlayer?.seekTo(position.coerceAtLeast(0))
+            mediaPlayer?.let { it.seekTo(position.coerceIn(0, it.duration.coerceAtLeast(0))) }
             updatePlaybackState()
+        } catch (_: IllegalStateException) {
+        }
+    }
+
+    private fun rewindFifteenSeconds() {
+        if (!prepared) return
+        try {
+            mediaPlayer?.let { seekTo((it.currentPosition - 15_000).coerceAtLeast(0)) }
         } catch (_: IllegalStateException) {
         }
     }
@@ -353,16 +375,29 @@ class AudioPlayerService : Service() {
     }
 
     private fun scheduleSleep(minutes: Int) {
+        SleepTimer.start(this, minutes)
+        scheduleSleepCheck()
+    }
+
+    private fun scheduleSleepCheck() {
         handler.removeCallbacksAndMessages(SLEEP_TOKEN)
-        if (minutes <= 0) return
+        if (PlaybackStateStore.sleepDeadlineElapsed == 0L) return
         handler.postAtTime(
             {
-                pausePlayback()
-                Toast.makeText(this, "Đã hết giờ nghe.", Toast.LENGTH_SHORT).show()
+                if (!expireSleepIfNeeded()) scheduleSleepCheck()
             },
             SLEEP_TOKEN,
-            SystemClock.uptimeMillis() + minutes * 60_000L
+            SystemClock.uptimeMillis() + SleepTimer.remainingMs()
         )
+    }
+
+    private fun expireSleepIfNeeded(): Boolean {
+        if (PlaybackStateStore.sleepDeadlineElapsed == 0L || SleepTimer.remainingMs() > 0) return false
+        SleepTimer.cancel(this)
+        handler.removeCallbacksAndMessages(SLEEP_TOKEN)
+        pausePlayback()
+        Toast.makeText(this, UiLanguage.text(this, "Đã hết giờ nghe.", "Sleep timer finished."), Toast.LENGTH_SHORT).show()
+        return true
     }
 
     private fun stopPlayback() {
@@ -385,7 +420,7 @@ class AudioPlayerService : Service() {
         }
         Toast.makeText(
             this,
-            "Không thể phát ${chapter.bookName} ${chapter.chapter}.",
+            UiLanguage.text(this, "Không thể phát ${chapter.bookName} ${chapter.chapter}.", "Could not play ${chapter.bookName} ${chapter.chapter}."),
             Toast.LENGTH_LONG
         ).show()
         updateNotification()
@@ -439,6 +474,7 @@ class AudioPlayerService : Service() {
 
     private val progressRunnable = object : Runnable {
         override fun run() {
+            if (expireSleepIfNeeded()) return
             updatePlaybackState()
             savePlaybackPosition()
             if (PlaybackStateStore.isPlaying) handler.postDelayed(this, 1_000)
@@ -487,7 +523,7 @@ class AudioPlayerService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                "Phát Kinh Thánh",
+                UiLanguage.text(this, "Phát Kinh Thánh", "Bible playback"),
                 NotificationManager.IMPORTANCE_LOW
             )
         )
@@ -496,7 +532,7 @@ class AudioPlayerService : Service() {
     private fun buildNotification(): Notification {
         val chapter = currentChapter
         val title = chapter?.let { "${it.bookName} ${it.chapter}" }
-            ?: "Kinh Thánh Tiếng Việt 1925"
+            ?: UiLanguage.text(this, "Kinh Thánh Offline", "Offline Bible")
         val builder = Notification.Builder(this, CHANNEL_ID)
         return builder
             .setSmallIcon(R.drawable.ic_launcher)
@@ -505,9 +541,9 @@ class AudioPlayerService : Service() {
             .setContentIntent(openAppIntent())
             .setOnlyAlertOnce(true)
             .addAction(notificationAction(
-                android.R.drawable.ic_media_previous,
-                "Trước",
-                ACTION_PREVIOUS
+                R.drawable.ic_rewind_15,
+                UiLanguage.text(this, "Lùi 15 giây", "Rewind 15 seconds"),
+                ACTION_REWIND_15
             ))
             .addAction(notificationAction(
                 if (PlaybackStateStore.isPlaying) {
@@ -515,12 +551,12 @@ class AudioPlayerService : Service() {
                 } else {
                     android.R.drawable.ic_media_play
                 },
-                if (PlaybackStateStore.isPlaying) "Tạm dừng" else "Phát",
+                if (PlaybackStateStore.isPlaying) UiLanguage.text(this, "Tạm dừng", "Pause") else UiLanguage.text(this, "Phát", "Play"),
                 ACTION_TOGGLE
             ))
             .addAction(notificationAction(
                 android.R.drawable.ic_media_next,
-                "Sau",
+                UiLanguage.text(this, "Chương sau", "Next chapter"),
                 ACTION_NEXT
             ))
             .setStyle(
@@ -547,7 +583,7 @@ class AudioPlayerService : Service() {
     private fun updateMediaSession() {
         val chapter = currentChapter
         val title = chapter?.let { "${it.bookName} ${it.chapter}" }
-            ?: "Kinh Thánh Tiếng Việt 1925"
+            ?: UiLanguage.text(this, "Kinh Thánh Offline", "Offline Bible")
         mediaSession.setMetadata(
             MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, title)
@@ -558,11 +594,15 @@ class AudioPlayerService : Service() {
                 )
                 .build()
         )
+        mediaSession.setPlaybackState(buildMediaPlaybackState())
+    }
+
+    private fun buildMediaPlaybackState(): PlaybackState {
         val actions = PlaybackState.ACTION_PLAY_PAUSE or
             PlaybackState.ACTION_PLAY or
             PlaybackState.ACTION_PAUSE or
             PlaybackState.ACTION_SKIP_TO_NEXT or
-            PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackState.ACTION_REWIND or
             PlaybackState.ACTION_SEEK_TO or
             PlaybackState.ACTION_STOP
         val state = if (PlaybackStateStore.isPlaying) {
@@ -570,16 +610,17 @@ class AudioPlayerService : Service() {
         } else {
             PlaybackState.STATE_PAUSED
         }
-        mediaSession.setPlaybackState(
-            PlaybackState.Builder()
-                .setActions(actions)
-                .setState(
-                    state,
-                    PlaybackStateStore.positionMs.toLong(),
-                    PlaybackStateStore.speed
-                )
-                .build()
-        )
+        return PlaybackState.Builder()
+            .setActions(actions)
+            // Android 13+ fills the previous slot with this custom action.
+            .addCustomAction(ACTION_REWIND_15,
+                UiLanguage.text(this, "Lùi 15 giây", "Rewind 15 seconds"), R.drawable.ic_rewind_15)
+            .setState(
+                state,
+                PlaybackStateStore.positionMs.toLong(),
+                PlaybackStateStore.speed
+            )
+            .build()
     }
 
     private fun openAppIntent(): PendingIntent {
@@ -611,6 +652,8 @@ class AudioPlayerService : Service() {
         const val ACTION_TOGGLE = "com.zohan.nghekinhthanh1925.TOGGLE"
         const val ACTION_NEXT = "com.zohan.nghekinhthanh1925.NEXT"
         const val ACTION_PREVIOUS = "com.zohan.nghekinhthanh1925.PREVIOUS"
+        const val ACTION_REWIND_15 = "com.zohan.nghekinhthanh1925.REWIND_15"
+        const val ACTION_CHECK_SLEEP = "com.zohan.nghekinhthanh1925.CHECK_SLEEP"
         const val ACTION_SEEK = "com.zohan.nghekinhthanh1925.SEEK"
         const val ACTION_SPEED = "com.zohan.nghekinhthanh1925.SPEED"
         const val ACTION_SLEEP = "com.zohan.nghekinhthanh1925.SLEEP"

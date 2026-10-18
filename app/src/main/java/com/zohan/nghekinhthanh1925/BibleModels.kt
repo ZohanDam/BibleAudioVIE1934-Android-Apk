@@ -52,4 +52,6 @@ object PlaybackStateStore {
     @Volatile var positionMs: Int = 0
     @Volatile var durationMs: Int = 0
     @Volatile var speed: Float = 1.0f
+    @Volatile var sleepDeadlineElapsed: Long = 0
+    @Volatile var sleepMinutes: Int = 0
 }

@@ -30,9 +30,11 @@ class AppUpdateController(
     private var waitingForPermission = false
     private var pendingRelease: AppRelease? = null
 
+    private fun uiText(vi: String, en: String) = UiLanguage.text(activity, vi, en)
+
     fun check() {
         if (busy) return
-        begin("Đang kiểm tra cập nhật…")
+        begin(uiText("Đang kiểm tra cập nhật…", "Checking for updates..."))
         val token = cancellation
         worker.execute {
             try {
@@ -40,11 +42,11 @@ class AppUpdateController(
                 result(token) {
                     val installed = client.currentVersion()
                     when {
-                        release == null -> message("Chưa có bản phát hành trên GitHub.")
+                        release == null -> message(uiText("Chưa có bản phát hành trên GitHub.", "No releases are available on GitHub."))
                         release.versionCode <= AppUpdateClient.versionCode(installed) ->
-                            message("Đang dùng phiên bản mới nhất (${installed.versionName}).")
+                            message(uiText("Đang dùng phiên bản mới nhất (${installed.versionName}).", "Already up to date (${installed.versionName})."))
                         release.minimumSdk > Build.VERSION.SDK_INT ->
-                            message("Bản cập nhật yêu cầu Android API ${release.minimumSdk} trở lên.")
+                            message(uiText("Bản cập nhật yêu cầu Android API ${release.minimumSdk} trở lên.", "This update requires Android API ${release.minimumSdk} or later."))
                         else -> offer(release)
                     }
                 }
@@ -57,11 +59,12 @@ class AppUpdateController(
     private fun offer(release: AppRelease) {
         val sizeMb = release.sizeBytes / 1_000_000.0
         dialog = AlertDialog.Builder(activity)
-            .setTitle("Cập nhật ${release.versionName}")
-            .setMessage("Dung lượng: %.1f MB\n\n".format(sizeMb) + release.notes +
-                "\n\nBản cập nhật giữ nguyên audio đã tải và cài đặt. Android sẽ yêu cầu xác nhận cài đặt.")
-            .setPositiveButton("Tải cập nhật") { _, _ -> download(release) }
-            .setNegativeButton("Để sau", null)
+            .setTitle(uiText("Cập nhật ${release.versionName}", "Update ${release.versionName}"))
+            .setMessage(uiText("Dung lượng: %.1f MB\n\n", "Size: %.1f MB\n\n").format(sizeMb) + release.notes +
+                uiText("\n\nBản cập nhật giữ nguyên audio đã tải và cài đặt. Android sẽ yêu cầu xác nhận cài đặt.",
+                    "\n\nDownloads and settings are preserved. Android will ask for installation confirmation."))
+            .setPositiveButton(uiText("Tải cập nhật", "Download update")) { _, _ -> download(release) }
+            .setNegativeButton(uiText("Để sau", "Later"), null)
             .show()
     }
 
@@ -76,7 +79,7 @@ class AppUpdateController(
             addView(progress)
             addView(label)
         }
-        begin("Đang tải bản ${release.versionName}", content)
+        begin(uiText("Đang tải bản ${release.versionName}", "Downloading ${release.versionName}"), content)
         val token = cancellation
         worker.execute {
             try {
@@ -102,19 +105,20 @@ class AppUpdateController(
         if (pendingRelease == null || closed) return
         if (!activity.packageManager.canRequestPackageInstalls()) {
             dialog = AlertDialog.Builder(activity)
-                .setTitle("Cho phép cài đặt cập nhật")
-                .setMessage("Bật “Cho phép từ nguồn này” cho ứng dụng, rồi quay lại để cài đặt bản cập nhật.")
-                .setPositiveButton("Mở cài đặt") { _, _ ->
+                .setTitle(uiText("Cho phép cài đặt cập nhật", "Allow update installation"))
+                .setMessage(uiText("Bật “Cho phép từ nguồn này” cho ứng dụng, rồi quay lại để cài đặt bản cập nhật.",
+                    "Enable 'Allow from this source' for this app, then return to install the update."))
+                .setPositiveButton(uiText("Mở cài đặt", "Open settings")) { _, _ ->
                     try {
                         waitingForPermission = true
                         activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                             Uri.parse("package:${activity.packageName}")))
                     } catch (_: Exception) {
                         waitingForPermission = false
-                        message("Không thể mở cài đặt quyền cài ứng dụng.")
+                        message(uiText("Không thể mở cài đặt quyền cài ứng dụng.", "Could not open installation permissions."))
                     }
                 }
-                .setNegativeButton("Để sau", null)
+                .setNegativeButton(uiText("Để sau", "Later"), null)
                 .show()
             return
         }
@@ -125,12 +129,12 @@ class AppUpdateController(
         if (!waitingForPermission) return
         waitingForPermission = false
         if (activity.packageManager.canRequestPackageInstalls()) install()
-        else message("Chưa cấp quyền cài cập nhật. Có thể thử lại từ menu cập nhật.")
+        else message(uiText("Chưa cấp quyền cài cập nhật. Có thể thử lại từ menu cập nhật.", "Installation permission was not granted. Try again from the update menu."))
     }
 
     private fun install() {
         val release = pendingRelease ?: return
-        begin("Đang xác minh bản cập nhật…")
+        begin(uiText("Đang xác minh bản cập nhật…", "Verifying update..."))
         val token = cancellation
         worker.execute {
             try {
@@ -142,7 +146,7 @@ class AppUpdateController(
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                         pendingRelease = null
                     } catch (_: Exception) {
-                        message("Không thể mở trình cài đặt Android.")
+                        message(uiText("Không thể mở trình cài đặt Android.", "Could not open the Android installer."))
                     }
                 }
             } catch (error: Exception) {
@@ -157,7 +161,7 @@ class AppUpdateController(
         dialog?.dismiss()
         dialog = AlertDialog.Builder(activity)
             .setTitle(title)
-            .setNegativeButton("Hủy") { _, _ -> cancel() }
+            .setNegativeButton(uiText("Hủy", "Cancel")) { _, _ -> cancel() }
             .apply { if (view != null) setView(view) }
             .setOnCancelListener { cancel() }
             .show()
@@ -181,14 +185,15 @@ class AppUpdateController(
 
     private fun failed(token: AtomicBoolean, error: Exception) {
         result(token) {
-            if (error !is CancellationException) message("Không thể cập nhật. Kiểm tra kết nối hoặc thử lại sau.\n\n${error.message.orEmpty().take(200)}")
+            if (error !is CancellationException) message(uiText("Không thể cập nhật. Kiểm tra kết nối hoặc thử lại sau.",
+                "Update failed. Check the connection or try again later.") + "\n\n${error.message.orEmpty().take(200)}")
         }
     }
 
     private fun message(text: String) {
         if (closed || activity.isFinishing) return
-        dialog = AlertDialog.Builder(activity).setTitle("Cập nhật ứng dụng")
-            .setMessage(text).setPositiveButton("Đóng", null).show()
+        dialog = AlertDialog.Builder(activity).setTitle(uiText("Cập nhật ứng dụng", "App update"))
+            .setMessage(text).setPositiveButton(uiText("Đóng", "Close"), null).show()
     }
 
     override fun close() {

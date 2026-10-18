@@ -6,7 +6,6 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -61,6 +60,9 @@ class MainActivity : Activity() {
     private var playerPositionView: TextView? = null
     private var playerDurationView: TextView? = null
     private var playerSpeedView: TextView? = null
+    private var playerTimerView: TextView? = null
+    private var playerTimerButton: View? = null
+    private var timerDialogRefresh: Runnable? = null
     private var playerPlayButton: ImageButton? = null
     private var playerProgressView: SeekBar? = null
     private var playerBarView: View? = null
@@ -97,6 +99,8 @@ class MainActivity : Activity() {
             selectedTextVersion = PlaybackStateStore.audioVersion
         }
         books = repository.books(selectedTextVersion)
+        if (!preferences.contains("uiLanguage")) UiLanguage.set(this, selectedTextVersion == "NIV")
+        if (!PlaybackStateStore.isPlaying && !PlaybackStateStore.playWhenReady) SleepTimer.restore(this)
         chapters = repository.chapters(audioVersionForText(selectedTextVersion))
         fontSize = preferences.getFloat(KEY_FONT_SIZE, 20f)
         playerPanelVisible = preferences.getBoolean(KEY_PLAYER_PANEL_VISIBLE, true)
@@ -117,12 +121,20 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         appUpdates.onResume()
+        if (PlaybackStateStore.sleepDeadlineElapsed > 0 && SleepTimer.remainingMs() == 0L) {
+            sendPlayerAction(AudioPlayerService.ACTION_CHECK_SLEEP)
+        }
         handler.removeCallbacks(ticker)
         handler.post(ticker)
+        timerDialogRefresh?.let {
+            handler.removeCallbacks(it)
+            handler.post(it)
+        }
     }
 
     override fun onPause() {
         handler.removeCallbacks(ticker)
+        timerDialogRefresh?.let { handler.removeCallbacks(it) }
         super.onPause()
     }
 
@@ -186,13 +198,13 @@ class MainActivity : Activity() {
             setBackgroundColor(colorSurface)
             elevation = dp(2).toFloat()
             addView(selectorChip("Sách") { showBookPicker() }.also {
-                it.contentDescription = "Chọn sách"
+                it.contentDescription = uiText("Chọn sách", "Choose book")
                 playerBookView = it
             }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(4) })
             addView(selectorChip("1") {
                 books.firstOrNull { it.code == currentChapter.bookCode }?.let(::showChapterPicker)
             }.also {
-                it.contentDescription = "Chọn chương"
+                it.contentDescription = uiText("Chọn chương", "Choose chapter")
                 playerChapterView = it
             }, LinearLayout.LayoutParams(dp(50), dp(40)).apply { marginEnd = dp(2) })
             addView(speakerStatusButton(), LinearLayout.LayoutParams(dp(44), dp(42)).apply {
@@ -201,7 +213,7 @@ class MainActivity : Activity() {
             addView(downloadStatusButton(), LinearLayout.LayoutParams(dp(36), dp(36)).apply {
                 marginEnd = dp(2)
             })
-            addView(plainIconButton(R.drawable.ic_settings, editionLabel("Cài đặt", "Settings")) {
+            addView(plainIconButton(R.drawable.ic_settings, uiText("Cài đặt", "Settings")) {
                 showToolbarMenu(it)
             }, LinearLayout.LayoutParams(dp(46), dp(46)))
         }
@@ -221,7 +233,7 @@ class MainActivity : Activity() {
         })
         content.addView(TextView(this).apply {
             text = getString(
-                if (selectedTextVersion == "NIV") R.string.chapter_heading_en else R.string.chapter_heading_vi,
+                if (selectedTextVersion == "NIV" || UiLanguage.isEnglish(this@MainActivity)) R.string.chapter_heading_en else R.string.chapter_heading_vi,
                 currentChapter.chapter
             )
             textSize = 18f
@@ -240,7 +252,7 @@ class MainActivity : Activity() {
                 setTextColor(colorMuted)
                 gravity = Gravity.CENTER
                 setPadding(dp(12), 0, dp(12), 0)
-                contentDescription = "Chọn bản dịch"
+                contentDescription = uiText("Chọn bản dịch", "Bible version")
                 setOnClickListener { showTextVersionDialog() }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         })
@@ -342,7 +354,7 @@ class MainActivity : Activity() {
         }
         timeline.addView(playerProgressView, LinearLayout.LayoutParams(0, dp(34), 1f))
         timeline.addView(playerDurationView, LinearLayout.LayoutParams(dp(46), dp(34)))
-        timeline.addView(plainIconButton(R.drawable.ic_collapse, editionLabel(
+        timeline.addView(plainIconButton(R.drawable.ic_collapse, uiText(
             "Thu gọn bảng điều khiển", "Collapse audio controls"
         )) { togglePlayerPanel() }, LinearLayout.LayoutParams(dp(44), dp(44)))
         container.addView(timeline)
@@ -351,7 +363,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), 0, dp(8), dp(8))
         }
-        playerSpeedView = transportOptionButton(formatSpeed(PlaybackStateStore.speed), "Tốc độ") {
+        playerSpeedView = transportOptionButton(formatSpeed(PlaybackStateStore.speed), uiText("Tốc độ", "Playback speed")) {
             showSpeedDialog()
         }
         transport.addView(playerSpeedView, LinearLayout.LayoutParams(dp(58), dp(54)))
@@ -364,7 +376,7 @@ class MainActivity : Activity() {
             } else {
                 android.R.drawable.ic_media_play
             },
-            "Phát hoặc tạm dừng",
+            uiText("Phát hoặc tạm dừng", "Play or pause"),
             primary = true,
             large = true
         ) { togglePlayback() }
@@ -372,9 +384,24 @@ class MainActivity : Activity() {
         transport.addView(chapterButton(previous = false) {
             navigateChapter(1)
         }, LinearLayout.LayoutParams(0, dp(54), 1f))
-        transport.addView(transportOptionButton("⏱", "Hẹn giờ") {
-            showSleepTimerDialog()
-        }, LinearLayout.LayoutParams(dp(58), dp(54)))
+        playerTimerButton = vertical().apply {
+            gravity = Gravity.CENTER
+            background = rounded(colorBackground, colorBorder, 16)
+            setOnClickListener { showSleepTimerDialog() }
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_timer)
+                imageTintList = android.content.res.ColorStateList.valueOf(colorText)
+            }, LinearLayout.LayoutParams(dp(20), dp(20)))
+            playerTimerView = TextView(this@MainActivity).apply {
+                textSize = 12f
+                setTextColor(colorText)
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+            }
+            addView(playerTimerView, matchWrap())
+        }
+        transport.addView(playerTimerButton, LinearLayout.LayoutParams(dp(72), dp(54)))
         container.addView(transport)
         return container
     }
@@ -386,6 +413,10 @@ class MainActivity : Activity() {
         compactPreviousView = chapterButton(previous = true) { navigateChapter(-1) }
         compactNextView = chapterButton(previous = false) { navigateChapter(1) }
         addView(compactPreviousView, LinearLayout.LayoutParams(dp(48), dp(48)))
+        addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+        addView(plainIconButton(R.drawable.ic_expand, uiText(
+            "Mở rộng bảng điều khiển", "Expand audio controls"
+        )) { togglePlayerPanel() }, LinearLayout.LayoutParams(dp(44), dp(44)))
         addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
         addView(compactNextView, LinearLayout.LayoutParams(dp(48), dp(48)))
     }
@@ -481,12 +512,12 @@ class MainActivity : Activity() {
             }
         }
 
-        addSection("Cựu Ước", books.filter { it.testament == "old" })
-        addSection("Tân Ước", books.filter { it.testament != "old" })
+        addSection(uiText("Cựu Ước", "Old Testament"), books.filter { it.testament == "old" })
+        addSection(uiText("Tân Ước", "New Testament"), books.filter { it.testament != "old" })
 
         dialog = AlertDialog.Builder(this)
             .setCustomTitle(TextView(this).apply {
-                text = "Chọn sách"
+                text = uiText("Chọn sách", "Choose book")
                 textSize = 24f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(colorText)
@@ -494,7 +525,7 @@ class MainActivity : Activity() {
                 setPadding(dp(20), dp(20), dp(20), dp(12))
             })
             .setView(ScrollView(this).apply { addView(bookList) })
-            .setNegativeButton("Đóng", null)
+            .setNegativeButton(uiText("Đóng", "Close"), null)
             .create()
         dialog.show()
     }
@@ -549,13 +580,13 @@ class MainActivity : Activity() {
         dialog = AlertDialog.Builder(this)
             .setTitle(book.name)
             .setView(ScrollView(this).apply { addView(content) })
-            .setNeutralButton("Tải sách") { _, _ ->
+            .setNeutralButton(uiText("Tải sách", "Download book")) { _, _ ->
                 enqueueDownloads(
                     chapters.filter { it.bookCode == book.code },
                     book.name
                 )
             }
-            .setNegativeButton("Đóng", null)
+            .setNegativeButton(uiText("Đóng", "Close"), null)
             .show()
     }
 
@@ -566,87 +597,87 @@ class MainActivity : Activity() {
         val content = vertical().apply {
             setPadding(dp(20), dp(10), dp(20), dp(8))
         }
-        content.addView(dialogTitle("Tải audio ${currentChapter.audioVersion}"))
+        content.addView(dialogTitle(uiText("Tải audio ${currentChapter.audioVersion}", "Audio downloads: ${currentChapter.audioVersion}")))
         content.addView(statusCard(
-            "${summary.downloaded} / ${chapters.size} chương",
-            "${formatBytes(summary.downloadedBytes)} đã lưu" +
+            uiText("${summary.downloaded} / ${chapters.size} chương", "${summary.downloaded} / ${chapters.size} chapters"),
+            uiText("${formatBytes(summary.downloadedBytes)} đã lưu", "${formatBytes(summary.downloadedBytes)} saved") +
                 if (summary.running + summary.queued > 0) {
-                    "  •  ${summary.running + summary.queued} đang chờ/tải"
+                    uiText("  •  ${summary.running + summary.queued} đang chờ/tải", "  •  ${summary.running + summary.queued} queued/downloading")
                 } else {
                     ""
                 }
         ))
         content.addView(primaryButton(
             if (downloads.availableFile(currentChapter) != null) {
-                "Chương này đã tải"
+                uiText("Chương này đã tải", "Chapter downloaded")
             } else {
-                "Tải ${currentChapter.bookName} ${currentChapter.chapter}"
+                uiText("Tải ${currentChapter.bookName} ${currentChapter.chapter}", "Download ${currentChapter.bookName} ${currentChapter.chapter}")
             }
         ) {
             enqueueDownloads(listOf(currentChapter), "${currentChapter.bookName} ${currentChapter.chapter}")
         })
         content.addView(outlinedButton(
-            "Tải sách ${currentChapter.bookName} " +
+            uiText("Tải sách ${currentChapter.bookName} ", "Download ${currentChapter.bookName} ") +
                 "(${currentBookSummary.downloaded}/${currentBookChapters.size})"
         ) {
             enqueueDownloads(currentBookChapters, currentChapter.bookName)
         })
         content.addView(primaryButton(
-            "Tải toàn bộ Kinh Thánh (${summary.downloaded}/${chapters.size})"
+            uiText("Tải toàn bộ Kinh Thánh (${summary.downloaded}/${chapters.size})", "Download entire Bible (${summary.downloaded}/${chapters.size})")
         ) {
             confirmFullDownload()
         })
         if (summary.running + summary.queued > 0) {
-            content.addView(outlinedButton("Dừng các mục đang tải") {
+            content.addView(outlinedButton(uiText("Dừng các mục đang tải", "Cancel pending downloads")) {
                 runBackgroundAction(
                     action = { downloads.cancelPending(chapters) },
-                    message = { "Đã dừng $it mục tải." }
+                    message = { uiText("Đã dừng $it mục tải.", "Cancelled $it downloads.") }
                 )
             })
         }
-        content.addView(sectionLabel("Quản lý bộ nhớ"))
-        content.addView(textButton("Xóa audio của sách hiện tại") {
+        content.addView(sectionLabel(uiText("Quản lý bộ nhớ", "Storage")))
+        content.addView(textButton(uiText("Xóa audio của sách hiện tại", "Delete this book's audio")) {
             confirmDelete(currentBookChapters, currentChapter.bookName)
         })
-        content.addView(textButton("Xóa toàn bộ audio ${currentChapter.audioVersion} đã tải") {
-            confirmDelete(chapters, "toàn bộ ${currentChapter.audioVersion}")
+        content.addView(textButton(uiText("Xóa toàn bộ audio ${currentChapter.audioVersion} đã tải", "Delete all downloaded ${currentChapter.audioVersion} audio")) {
+            confirmDelete(chapters, uiText("toàn bộ ${currentChapter.audioVersion}", "all ${currentChapter.audioVersion} audio"))
         })
         AlertDialog.Builder(this)
             .setView(ScrollView(this).apply { addView(content) })
-            .setNegativeButton("Đóng", null)
+            .setNegativeButton(uiText("Đóng", "Close"), null)
             .show()
     }
 
     private fun confirmFullDownload() {
         val missing = chapters.count { downloads.availableFile(it) == null }
         if (missing == 0) {
-            toast("Toàn bộ audio đã được tải.")
+            toast(uiText("Toàn bộ audio đã được tải.", "All audio is already downloaded."))
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("Tải toàn bộ ${currentChapter.audioVersion}?")
+            .setTitle(uiText("Tải toàn bộ ${currentChapter.audioVersion}?", "Download all ${currentChapter.audioVersion}?"))
             .setMessage(
-                "Còn $missing chương. " + audioStorageNote() + " " +
-                    "Quá trình tải tiếp tục khi đóng ứng dụng."
+                uiText("Còn $missing chương. ", "$missing chapters remaining. ") + audioStorageNote() + " " +
+                    uiText("Quá trình tải tiếp tục khi đóng ứng dụng.", "Downloads continue when the app is closed.")
             )
-            .setPositiveButton("Bắt đầu tải") { _, _ ->
-                enqueueDownloads(chapters, "toàn bộ Kinh Thánh")
+            .setPositiveButton(uiText("Bắt đầu tải", "Download")) { _, _ ->
+                enqueueDownloads(chapters, uiText("toàn bộ Kinh Thánh", "the entire Bible"))
             }
-            .setNegativeButton("Hủy", null)
+            .setNegativeButton(uiText("Hủy", "Cancel"), null)
             .show()
     }
 
     private fun confirmDelete(items: List<BibleChapter>, label: String) {
         AlertDialog.Builder(this)
-            .setTitle("Xóa audio?")
-            .setMessage("Các tệp của $label sẽ bị xóa khỏi thiết bị.")
-            .setPositiveButton("Xóa") { _, _ ->
+            .setTitle(uiText("Xóa audio?", "Delete audio?"))
+            .setMessage(uiText("Các tệp của $label sẽ bị xóa khỏi thiết bị.", "Files for $label will be deleted from this device."))
+            .setPositiveButton(uiText("Xóa", "Delete")) { _, _ ->
                 runBackgroundAction(
                     action = { downloads.delete(items) },
-                    message = { "Đã xóa $it chương." }
+                    message = { uiText("Đã xóa $it chương.", "Deleted $it chapters.") }
                 )
             }
-            .setNegativeButton("Hủy", null)
+            .setNegativeButton(uiText("Hủy", "Cancel"), null)
             .show()
     }
 
@@ -654,14 +685,14 @@ class MainActivity : Activity() {
         runBackgroundAction(
             action = { downloads.enqueue(items) },
             message = {
-                if (it == 0) "$label đã có sẵn hoặc đang tải."
-                else "Đã thêm $it chương của $label vào hàng đợi."
+                if (it == 0) uiText("$label đã có sẵn hoặc đang tải.", "$label is already available or downloading.")
+                else uiText("Đã thêm $it chương của $label vào hàng đợi.", "Queued $it chapters from $label.")
             }
         )
     }
 
     private fun runBackgroundAction(action: () -> Int, message: (Int) -> String) {
-        toast("Đang xử lý...")
+        toast(uiText("Đang xử lý...", "Working..."))
         backgroundExecutor.execute {
             val result = action()
             handler.post {
@@ -673,7 +704,7 @@ class MainActivity : Activity() {
     private fun showSpeedDialog() {
         val labels = speeds.map(::formatSpeed).toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("Tốc độ phát")
+            .setTitle(uiText("Tốc độ phát", "Playback speed"))
             .setSingleChoiceItems(labels, speeds.indexOf(PlaybackStateStore.speed)) { dialog, index ->
                 val speed = speeds[index]
                 PlaybackStateStore.speed = speed
@@ -688,26 +719,81 @@ class MainActivity : Activity() {
     }
 
     private fun showSleepTimerDialog() {
-        val labels = arrayOf(
-            "15 phút",
-            "30 phút",
-            "60 phút",
-            "90 phút",
-            "120 phút",
-            "240 phút",
-            "480 phút",
-            "Tắt hẹn giờ"
-        )
-        val values = intArrayOf(15, 30, 60, 90, 120, 240, 480, 0)
-        AlertDialog.Builder(this)
-            .setTitle("Hẹn giờ tắt")
-            .setItems(labels) { _, index ->
-                sendPlayerAction(AudioPlayerService.ACTION_SLEEP) {
-                    putExtra(AudioPlayerService.EXTRA_MINUTES, values[index])
+        val values = listOf(15, 30, 60, 90, 120, 240, 480)
+        val content = vertical().apply { setPadding(dp(18), dp(8), dp(18), dp(8)) }
+        val status = TextView(this).apply {
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(colorMuted)
+        }
+        val countdown = TextView(this).apply {
+            textSize = 28f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(colorText)
+            tag = "sleepCountdown"
+            setPadding(0, dp(6), 0, dp(16))
+        }
+        content.addView(status, matchWrap())
+        content.addView(countdown, matchWrap())
+        val grid = GridLayout(this).apply { columnCount = 3 }
+        val buttons = values.associateWith { minutes ->
+            Button(this).apply {
+                text = when {
+                    minutes < 120 -> uiText("$minutes phút", "$minutes min")
+                    else -> uiText("${minutes / 60} giờ", "${minutes / 60} h")
                 }
-                toast(if (values[index] == 0) "Đã tắt hẹn giờ." else "Sẽ tắt sau ${values[index]} phút.")
+                isAllCaps = false
+                textSize = 14f
+                minWidth = 0
+                minimumWidth = 0
+                setOnClickListener {
+                    sendPlayerAction(AudioPlayerService.ACTION_SLEEP) {
+                        putExtra(AudioPlayerService.EXTRA_MINUTES, minutes)
+                    }
+                }
+                grid.addView(this, GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = dp(52)
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(3), dp(3), dp(3), dp(3))
+                })
             }
-            .show()
+        }
+        content.addView(grid, matchWrap())
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(uiText("Hẹn giờ tắt", "Sleep timer"))
+            .setView(content)
+            .setNegativeButton(uiText("Tắt hẹn giờ", "Turn off")) { _, _ ->
+                sendPlayerAction(AudioPlayerService.ACTION_SLEEP) { putExtra(AudioPlayerService.EXTRA_MINUTES, 0) }
+            }
+            .setPositiveButton(uiText("Đóng", "Close"), null)
+            .create()
+        val refresh = object : Runnable {
+            override fun run() {
+                val active = SleepTimer.remainingMs() > 0
+                status.text = if (active) uiText("Còn lại", "Time remaining") else uiText("Chọn thời gian", "Choose a duration")
+                countdown.text = if (active) SleepTimer.countdown() else uiText("Hẹn giờ đã tắt", "Timer off")
+                countdown.textSize = if (active) 28f else 20f
+                buttons.forEach { (minutes, button) ->
+                    val selected = active && PlaybackStateStore.sleepMinutes == minutes
+                    button.isSelected = selected
+                    button.setTextColor(colorText)
+                    button.background = rounded(if (selected) colorSelection else colorBackground, colorBorder)
+                }
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.isEnabled = active
+                updatePlayerBar()
+                handler.postDelayed(this, SleepTimer.nextDisplayDelayMs())
+            }
+        }
+        timerDialogRefresh?.let { handler.removeCallbacks(it) }
+        timerDialogRefresh = refresh
+        dialog.setOnDismissListener {
+            handler.removeCallbacks(refresh)
+            if (timerDialogRefresh === refresh) timerDialogRefresh = null
+        }
+        dialog.show()
+        refresh.run()
     }
 
     private fun showFontSizeDialog() {
@@ -715,7 +801,7 @@ class MainActivity : Activity() {
         val labels = sizes.map { "${it.toInt()} pt" }.toTypedArray()
         val selected = sizes.indexOfFirst { it == fontSize }.coerceAtLeast(0)
         AlertDialog.Builder(this)
-            .setTitle(editionLabel("Cỡ chữ", "Font"))
+            .setTitle(uiText("Cỡ chữ", "Font"))
             .setSingleChoiceItems(labels, selected) { dialog, index ->
                 fontSize = sizes[index]
                 preferences.edit().putFloat(KEY_FONT_SIZE, fontSize).apply()
@@ -729,8 +815,8 @@ class MainActivity : Activity() {
         return books.firstOrNull { it.code == bookCode }?.name ?: bookCode
     }
 
-    private fun editionLabel(vietnamese: String, english: String): String =
-        if (selectedTextVersion == "NIV") english else vietnamese
+    private fun uiText(vietnamese: String, english: String): String =
+        UiLanguage.text(this, vietnamese, english)
 
     private fun showTextVersionDialog() {
         var dialog: AlertDialog? = null
@@ -744,9 +830,9 @@ class MainActivity : Activity() {
             }
         }
         dialog = AlertDialog.Builder(this)
-            .setTitle("Chọn bản dịch")
+            .setTitle(uiText("Chọn bản dịch", "Bible version"))
             .setView(choices)
-            .setNegativeButton("Đóng", null)
+            .setNegativeButton(uiText("Đóng", "Close"), null)
             .create()
         dialog.show()
     }
@@ -766,11 +852,11 @@ class MainActivity : Activity() {
     }
 
     private fun audioStorageNote(): String = if (currentChapter.audioVersion == "VIE1925") {
-        "Tổng bộ audio cần khoảng 1,16 GB."
+        uiText("Tổng bộ audio cần khoảng 1,16 GB.", "Full audio download: about 1.16 GB.")
     } else {
         repository.nivAudioSizeBytes()?.let {
-            "Tổng bộ audio cần khoảng " + String.format(Locale.getDefault(), "%.2f GB.", it / 1_000_000_000.0)
-        } ?: "Dung lượng đã tải được hiển thị trong mục tải audio."
+            uiText("Tổng bộ audio cần khoảng ", "Full audio download: about ") + String.format(Locale.getDefault(), "%.2f GB.", it / 1_000_000_000.0)
+        } ?: uiText("Dung lượng đã tải được hiển thị trong mục tải audio.", "Downloaded size is shown in audio downloads.")
     }
 
     private fun showAboutDialog() {
@@ -792,20 +878,16 @@ class MainActivity : Activity() {
                 setTextIsSelectable(true)
             }, matchWrap())
         }
-        section(editionLabel("Ứng dụng", "The app"), editionLabel(
+        section(uiText("Ứng dụng", "The app"), uiText(
             "Ứng dụng bởi Zohan, với mong muốn nghe Kinh Thánh offline.",
             "By Zohan, for listening to the Bible offline."
         ))
-        section(editionLabel("Nội dung", "Bible content"), editionLabel(
+        section(uiText("Nội dung", "Bible content"), uiText(
             "66 sách • 1.189 chương\nBản văn: ${textVersion.code}\nAudio: ${currentChapter.audioVersion}",
             "66 books • 1,189 chapters\nText: ${textVersion.code}\nAudio: ${currentChapter.audioVersion}"
         ))
-        val storage = if (selectedTextVersion == "NIV") {
-            repository.nivAudioSizeBytes()?.let {
-                "Full audio download: about " + String.format(Locale.US, "%.2f GB.", it / 1_000_000_000.0)
-            } ?: "Downloaded size is shown in audio downloads."
-        } else audioStorageNote()
-        section(editionLabel("Audio offline", "Offline audio"), editionLabel(
+        val storage = audioStorageNote()
+        section(uiText("Audio offline", "Offline audio"), uiText(
             "${summary.downloaded}/${chapters.size} chương đã tải.\n$storage\n" +
                 "Audio có thể nghe được online hoặc tải về máy để nghe offline.",
             "${summary.downloaded}/${chapters.size} chapters downloaded.\n$storage\n" +
@@ -818,11 +900,11 @@ class MainActivity : Activity() {
                 append("\nhttps://www.bible.com/audio-bible/111/GEN.1.NIV")
             }
         }
-        section(editionLabel("Nguồn và bản quyền", "Sources and copyright"), sources, small = true)
+        section(uiText("Nguồn và bản quyền", "Sources and copyright"), sources, small = true)
         AlertDialog.Builder(this)
-            .setTitle(editionLabel("Giới thiệu ứng dụng", "About this app"))
+            .setTitle(uiText("Giới thiệu ứng dụng", "About this app"))
             .setView(ScrollView(this).apply { addView(content) })
-            .setPositiveButton(editionLabel("Đóng", "Close"), null)
+            .setPositiveButton(uiText("Đóng", "Close"), null)
             .show()
     }
 
@@ -843,6 +925,8 @@ class MainActivity : Activity() {
         playerPositionView?.text = formatTime(PlaybackStateStore.positionMs)
         playerDurationView?.text = formatTime(PlaybackStateStore.durationMs)
         playerSpeedView?.text = formatSpeed(PlaybackStateStore.speed)
+        playerTimerView?.text = if (SleepTimer.remainingMs() > 0) SleepTimer.countdown() else uiText("Hẹn giờ", "Timer")
+        playerTimerButton?.contentDescription = uiText("Hẹn giờ tắt", "Sleep timer")
         playerPlayButton?.setImageResource(
             if (PlaybackStateStore.isPlaying || PlaybackStateStore.playWhenReady) {
                 android.R.drawable.ic_media_pause
@@ -861,7 +945,7 @@ class MainActivity : Activity() {
         playerBarView?.visibility = if (playerPanelVisible) View.VISIBLE else View.GONE
         compactNavigationView?.visibility = if (playerPanelVisible) View.GONE else View.VISIBLE
         playerPanelToggleView?.contentDescription =
-            if (playerPanelVisible) "Ẩn bảng điều khiển" else "Hiện bảng điều khiển"
+            if (playerPanelVisible) uiText("Ẩn bảng điều khiển", "Hide audio controls") else uiText("Hiện bảng điều khiển", "Show audio controls")
         preferences.edit()
             .putBoolean(KEY_PLAYER_PANEL_VISIBLE, playerPanelVisible)
             .apply()
@@ -884,7 +968,7 @@ class MainActivity : Activity() {
                 }
             }
             updatePlayerBar()
-            handler.postDelayed(this, 1_000)
+            handler.postDelayed(this, SleepTimer.nextDisplayDelayMs())
         }
     }
 
@@ -916,20 +1000,28 @@ class MainActivity : Activity() {
         val content = vertical().apply {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             background = rounded(colorSurface, colorBorder, 8)
-            addView(settingsMenuItem("Aa", editionLabel("Cỡ chữ", "Font")) {
+            addView(settingsMenuItem("Aa", uiText("Cỡ chữ", "Font")) {
                 popup?.dismiss()
                 showFontSizeDialog()
             })
-            addView(settingsMenuItem("◐", editionLabel("Giao diện", "Appearance")) {
+            addView(inlineSettingsChoices(uiText("Ngôn ngữ", "Language"),
+                listOf("VN", "EN"), if (UiLanguage.isEnglish(this@MainActivity)) 1 else 0) { index ->
                 popup?.dismiss()
-                showAppearanceDialog()
+                UiLanguage.set(this@MainActivity, index == 1)
+                refreshReaderOptions()
             })
-            addView(settingsMenuItem("", editionLabel("Kiểm tra cập nhật", "Check for updates"),
+            addView(inlineSettingsChoices(uiText("Giao diện", "Appearance"),
+                listOf(uiText("Ngày", "Day"), uiText("Đêm", "Night")), if (darkMode) 1 else 0) { index ->
+                popup?.dismiss()
+                preferences.edit().putString(KEY_THEME_MODE, if (index == 1) "dark" else "light").apply()
+                refreshReaderOptions()
+            })
+            addView(settingsMenuItem("", uiText("Kiểm tra cập nhật", "Check for updates"),
                 R.drawable.ic_system_update) {
                 popup?.dismiss()
                 appUpdates.check()
             })
-            addView(settingsMenuItem("ⓘ", editionLabel("Giới thiệu", "About")) {
+            addView(settingsMenuItem("ⓘ", uiText("Giới thiệu", "About")) {
                 popup?.dismiss()
                 showAboutDialog()
             })
@@ -950,12 +1042,7 @@ class MainActivity : Activity() {
     }
 
     private fun applyReaderTheme() {
-        darkMode = when (preferences.getString(KEY_THEME_MODE, "system")) {
-            "dark" -> true
-            "light" -> false
-            else -> resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
-                Configuration.UI_MODE_NIGHT_YES
-        }
+        darkMode = preferences.getString(KEY_THEME_MODE, "light") == "dark"
         setTheme(if (darkMode) R.style.AppTheme_Dark else R.style.AppTheme)
     }
 
@@ -975,32 +1062,38 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showAppearanceDialog() {
-        val modes = listOf("system", "light", "dark")
-        val selected = modes.indexOf(preferences.getString(KEY_THEME_MODE, "system"))
-            .coerceAtLeast(0)
-        AlertDialog.Builder(this)
-            .setTitle(editionLabel("Giao diện", "Appearance"))
-            .setSingleChoiceItems(arrayOf(
-                editionLabel("Theo hệ thống", "System"),
-                editionLabel("Sáng", "Light"),
-                editionLabel("Tối", "Dark")
-            ), selected) { dialog, index ->
-                val scrollPosition = readerScrollView?.scrollY ?: 0
-                preferences.edit().putString(KEY_THEME_MODE, modes[index]).apply()
-                dialog.dismiss()
-                applyReaderTheme()
-                renderReader()
-                readerScrollView?.post { readerScrollView?.scrollTo(0, scrollPosition) }
+    private fun refreshReaderOptions() {
+        val scrollPosition = readerScrollView?.scrollY ?: 0
+        applyReaderTheme()
+        renderReader()
+        readerScrollView?.post { readerScrollView?.scrollTo(0, scrollPosition) }
+    }
+
+    private fun inlineSettingsChoices(description: String, labels: List<String>, selected: Int, action: (Int) -> Unit): View {
+        return horizontal().apply {
+            contentDescription = description
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            labels.forEachIndexed { index, label ->
+                addView(TextView(this@MainActivity).apply {
+                    text = label
+                    contentDescription = label
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    setTextColor(colorText)
+                    setTypeface(typeface, Typeface.BOLD)
+                    isSelected = index == selected
+                    background = rounded(if (isSelected) colorSelection else colorBackground, colorBorder)
+                    setOnClickListener { action(index) }
+                }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
             }
-            .setNegativeButton("Đóng", null)
-            .show()
+            layoutParams = matchWrap()
+        }
     }
 
     private fun speakerStatusButton(): View {
         return vertical().apply {
             gravity = Gravity.CENTER
-            contentDescription = if (playerPanelVisible) "Ẩn bảng điều khiển" else "Hiện bảng điều khiển"
+            contentDescription = if (playerPanelVisible) uiText("Ẩn bảng điều khiển", "Hide audio controls") else uiText("Hiện bảng điều khiển", "Show audio controls")
             setOnClickListener { togglePlayerPanel() }
             playerPanelToggleView = this
             addView(ImageView(this@MainActivity).apply {
@@ -1031,7 +1124,7 @@ class MainActivity : Activity() {
             setImageResource(R.drawable.ic_download_bold)
             imageTintList = android.content.res.ColorStateList.valueOf(colorText)
             scaleType = ImageView.ScaleType.CENTER
-            contentDescription = "Tải xuống"
+            contentDescription = uiText("Tải xuống", "Downloads")
             setOnClickListener { showDownloadsDialog() }
         }
     }
@@ -1108,7 +1201,7 @@ class MainActivity : Activity() {
             isSelected = selected
             isFocusable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            contentDescription = if (selected) "$label, đang chọn" else label
+            contentDescription = if (selected) uiText("$label, đang chọn", "$label, selected") else label
             if (selected) background = rounded(colorSelection)
             setOnClickListener { action() }
             addView(TextView(this@MainActivity).apply {
@@ -1209,7 +1302,7 @@ class MainActivity : Activity() {
         action: () -> Unit
     ): ImageButton = plainIconButton(
         if (previous) R.drawable.ic_chapter_previous else R.drawable.ic_chapter_next,
-        if (previous) "Chương trước" else "Chương sau"
+        if (previous) uiText("Chương trước", "Previous chapter") else uiText("Chương sau", "Next chapter")
     ) { action() }
 
     private fun transportOptionButton(
@@ -1219,7 +1312,7 @@ class MainActivity : Activity() {
     ): TextView {
         return TextView(this).apply {
             this.text = text
-            textSize = if (description == "Hẹn giờ") 23f else 16f
+            textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(colorText)
             gravity = Gravity.CENTER

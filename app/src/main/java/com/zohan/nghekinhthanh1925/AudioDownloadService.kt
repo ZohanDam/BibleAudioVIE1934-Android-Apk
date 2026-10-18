@@ -239,15 +239,16 @@ class AudioDownloadService : Service() {
         val summary = store.summary(chaptersByOrder.values)
         val pending = summary.running + summary.queued
         val detail = when {
-            pending > 0 -> "${summary.downloaded} chương đã lưu · " +
-                "${summary.running}/$WORKER_COUNT đang tải · ${summary.queued} chờ"
-            summary.failed > 0 -> "Hoàn tất với ${summary.failed} lỗi"
-            else -> "Đã tải xong ${summary.downloaded} chương"
+            pending > 0 -> UiLanguage.text(this,
+                "${summary.downloaded} chương đã lưu · ${summary.running}/$WORKER_COUNT đang tải · ${summary.queued} chờ",
+                "${summary.downloaded} chapters saved · ${summary.running}/$WORKER_COUNT downloading · ${summary.queued} queued")
+            summary.failed > 0 -> UiLanguage.text(this, "Hoàn tất với ${summary.failed} lỗi", "Finished with ${summary.failed} errors")
+            else -> UiLanguage.text(this, "Đã tải xong ${summary.downloaded} chương", "Downloaded ${summary.downloaded} chapters")
         }
         val builder = Notification.Builder(this, CHANNEL_ID)
         return builder
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle("Đang tải audio Kinh Thánh")
+            .setContentTitle(UiLanguage.text(this, "Đang tải audio Kinh Thánh", "Downloading Bible audio"))
             .setContentText(detail)
             .setOnlyAlertOnce(true)
             .setOngoing(pending > 0)
@@ -261,7 +262,7 @@ class AudioDownloadService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                "Tải audio Kinh Thánh",
+                UiLanguage.text(this, "Tải audio Kinh Thánh", "Bible audio downloads"),
                 NotificationManager.IMPORTANCE_LOW
             )
         )

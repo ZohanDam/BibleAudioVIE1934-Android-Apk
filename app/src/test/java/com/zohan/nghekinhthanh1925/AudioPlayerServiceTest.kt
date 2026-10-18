@@ -3,6 +3,10 @@ package com.zohan.nghekinhthanh1925
 import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
+import android.app.Notification
+import android.media.session.PlaybackState
+import android.os.SystemClock
+import android.provider.Settings
 import android.os.Looper
 import org.junit.After
 import org.junit.Assert.*
@@ -39,6 +43,8 @@ class AudioPlayerServiceTest {
         PlaybackStateStore.positionMs = 0
         PlaybackStateStore.durationMs = 0
         PlaybackStateStore.speed = 1f
+        PlaybackStateStore.sleepDeadlineElapsed = 0
+        PlaybackStateStore.sleepMinutes = 0
         ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(60_000, 1000) }
         controller = Robolectric.buildService(AudioPlayerService::class.java).create()
         service = controller.get()
@@ -200,5 +206,107 @@ class AudioPlayerServiceTest {
             oldFile.delete()
             newFile.delete()
         }
+    }
+
+    private fun seek(position: Int) {
+        service.onStartCommand(Intent(service, AudioPlayerService::class.java)
+            .setAction(AudioPlayerService.ACTION_SEEK).putExtra(AudioPlayerService.EXTRA_POSITION, position), 0, 1)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun timer(minutes: Int) {
+        service.onStartCommand(Intent(service, AudioPlayerService::class.java)
+            .setAction(AudioPlayerService.ACTION_SLEEP).putExtra(AudioPlayerService.EXTRA_MINUTES, minutes), 0, 1)
+    }
+
+    @Test fun rewindMovesFifteenSecondsWithoutChangingChapterOrPauseState() {
+        select(2, "NIV", true)
+        prepare()
+        action(AudioPlayerService.ACTION_PAUSE)
+        seek(25_000)
+        action(AudioPlayerService.ACTION_REWIND_15)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(10_000, player()!!.currentPosition)
+        assertEquals(10_000, PlaybackStateStore.positionMs)
+        assertEquals(2, PlaybackStateStore.currentOrder)
+        assertFalse(player()!!.isPlaying)
+        action(AudioPlayerService.ACTION_REWIND_15)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, player()!!.currentPosition)
+        assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test fun rewindWhilePlayingKeepsPlaying() {
+        select(1, "VIE1925", true)
+        prepare()
+        seek(25_000)
+        action(AudioPlayerService.ACTION_REWIND_15)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(10_000, player()!!.currentPosition)
+        assertTrue(player()!!.isPlaying)
+    }
+
+    @Test fun timerExpiryPausesAndClearsTheCountdown() {
+        ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(600_000, 1000) }
+        select(1, "VIE1925", true)
+        prepare()
+        timer(1)
+        assertEquals("1:00", SleepTimer.countdown())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+        assertFalse(PlaybackStateStore.isPlaying)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        assertEquals(0L, PlaybackStateStore.sleepDeadlineElapsed)
+        assertFalse(service.getSharedPreferences("state", Context.MODE_PRIVATE).getBoolean("wasPlaying", true))
+    }
+
+    @Test fun timerCanBeReplacedAndCancelledWithoutPausing() {
+        select(1, "NIV", true)
+        prepare()
+        timer(15)
+        timer(480)
+        assertEquals("8:00:00", SleepTimer.countdown())
+        assertEquals(480, PlaybackStateStore.sleepMinutes)
+        timer(0)
+        assertEquals(0L, PlaybackStateStore.sleepDeadlineElapsed)
+        assertTrue(player()!!.isPlaying)
+    }
+
+    @Test fun expiredSavedTimerCannotRestartAudioAfterServiceRecreation() {
+        timer(1)
+        val state = service.getSharedPreferences("state", Context.MODE_PRIVATE)
+        state.edit().putLong("sleepDeadlineElapsed", SystemClock.elapsedRealtime() - 1)
+            .putBoolean("wasPlaying", true).commit()
+        controller.destroy()
+        controller = Robolectric.buildService(AudioPlayerService::class.java).create()
+        service = controller.get()
+        service.onStartCommand(null, 0, 1)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        assertNull(player())
+        assertEquals(0L, PlaybackStateStore.sleepDeadlineElapsed)
+    }
+
+    @Test fun savedTimerDoesNotSurviveADeviceReboot() {
+        timer(15)
+        Settings.Global.putInt(service.contentResolver, Settings.Global.BOOT_COUNT, 123)
+        SleepTimer.restore(service)
+        assertEquals(0L, PlaybackStateStore.sleepDeadlineElapsed)
+    }
+
+    @Test @Config(sdk = [34]) fun android14SessionAndNotificationExposeRewindPlayNext() {
+        select(1, "VIE1925", false)
+        val state = AudioPlayerService::class.java.getDeclaredMethod("buildMediaPlaybackState").apply {
+            isAccessible = true
+        }.invoke(service) as PlaybackState
+        assertEquals(0L, state.actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+        assertNotEquals(0L, state.actions and PlaybackState.ACTION_SKIP_TO_NEXT)
+        assertEquals(AudioPlayerService.ACTION_REWIND_15, state.customActions.single().action)
+        val notification = AudioPlayerService::class.java.getDeclaredMethod("buildNotification").apply {
+            isAccessible = true
+        }.invoke(service) as Notification
+        assertEquals(listOf(AudioPlayerService.ACTION_REWIND_15, AudioPlayerService.ACTION_TOGGLE, AudioPlayerService.ACTION_NEXT),
+            notification.actions.map { shadowOf(it.actionIntent).savedIntent.action })
+        action(AudioPlayerService.ACTION_REWIND_15)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        assertNull(player())
     }
 }
