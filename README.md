@@ -4,6 +4,8 @@
 
 Ban moi nhat: https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/latest
 
+- Tren Android, chi tai tep `.apk` trong Releases va mo de cai dat.
+  Khong can tai Source code hoac update.json. Audio tai rieng trong ung dung.
 - Cai APK tu Releases mot lan de them chuc nang cap nhat trong ung dung.
 - Tu ban 2.19: menu ba cham > bieu tuong cap nhat > Tai cap nhat.
 - Ung dung chi kiem tra khi nguoi dung yeu cau, khong tham do nen.
@@ -43,11 +45,14 @@ Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
 
 - Giao dien doc Kinh Thanh theo bo cuc YouVersion.
 - Chon Cuu Uoc, Tan Uoc, sach va chuong.
+- Sach dang chon co nen noi bat, chu dam va dau tich; khong dung mau do.
+- An bang audio bang nut loa van giu hai mui ten chuyen chuong nho.
 - Doc text offline, doi co chu.
 - Menu ba cham > bieu tuong giao dien: Theo he thong, Sang, Toi.
 - Ghi nho giao dien; doi giao dien khong khoi dong lai audio.
 - Nut ban dich nam duoi tieu de chuong. Doi ban dich giu nguyen sach/chuong,
   khong bat dau audio khi dang tam dung va ghi nho lua chon.
+- Bo chon ban dich gon, moi dong mot ma ban dich va dau tich cho lua chon hien tai.
 - NIV dung ban thu Max McLean (The Listener's Bible), cung ban NIV 111.
 - VIE2010 van dung audio VIE1925 va hien ro ten ban audio.
 - Doi ban dich giua NIV/VIE1925 doi ca audio, giu sach/chuong va trang thai

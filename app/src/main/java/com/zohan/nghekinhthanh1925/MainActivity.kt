@@ -64,6 +64,9 @@ class MainActivity : Activity() {
     private var playerPlayButton: ImageButton? = null
     private var playerProgressView: SeekBar? = null
     private var playerBarView: View? = null
+    private var compactNavigationView: View? = null
+    private var compactPreviousView: TextView? = null
+    private var compactNextView: TextView? = null
     private var playerPanelToggleView: View? = null
     private var playerPanelVisible = true
     private var isSeeking = false
@@ -75,6 +78,7 @@ class MainActivity : Activity() {
     private val colorText get() = if (darkMode) Color.rgb(238, 238, 238) else Color.rgb(31, 31, 31)
     private val colorMuted get() = if (darkMode) Color.rgb(183, 183, 183) else Color.rgb(103, 103, 103)
     private val colorBorder get() = if (darkMode) Color.rgb(66, 66, 66) else Color.rgb(226, 226, 226)
+    private val colorSelection get() = if (darkMode) Color.rgb(65, 65, 65) else Color.rgb(230, 230, 230)
     private val colorAccent = Color.rgb(190, 40, 45)
     private val colorEmphasis get() = if (darkMode) Color.rgb(255, 156, 159) else colorAccent
 
@@ -164,6 +168,10 @@ class MainActivity : Activity() {
             visibility = if (playerPanelVisible) View.VISIBLE else View.GONE
         }
         root.addView(playerBarView, matchWrap())
+        compactNavigationView = compactChapterNavigation().apply {
+            visibility = if (playerPanelVisible) View.GONE else View.VISIBLE
+        }
+        root.addView(compactNavigationView, matchWrap())
         setContentView(root)
         // The system-bar controller requires the decor view created by setContentView.
         updateSystemBars()
@@ -178,11 +186,13 @@ class MainActivity : Activity() {
             setBackgroundColor(colorSurface)
             elevation = dp(2).toFloat()
             addView(selectorChip("Sách") { showBookPicker() }.also {
+                it.contentDescription = "Chọn sách"
                 playerBookView = it
             }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(4) })
             addView(selectorChip("1") {
                 books.firstOrNull { it.code == currentChapter.bookCode }?.let(::showChapterPicker)
             }.also {
+                it.contentDescription = "Chọn chương"
                 playerChapterView = it
             }, LinearLayout.LayoutParams(dp(50), dp(40)).apply { marginEnd = dp(2) })
             addView(speakerStatusButton(), LinearLayout.LayoutParams(dp(44), dp(42)).apply {
@@ -218,10 +228,16 @@ class MainActivity : Activity() {
         content.addView(horizontal().apply {
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, dp(18))
-            addView(selectorChip("$selectedTextVersion  ▾") { showTextVersionDialog() }.apply {
+            addView(TextView(this@MainActivity).apply {
+                text = "$selectedTextVersion  ▾"
                 textSize = 12f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(colorMuted)
+                gravity = Gravity.CENTER
+                setPadding(dp(12), 0, dp(12), 0)
                 contentDescription = "Chọn bản dịch"
-            }, LinearLayout.LayoutParams(dp(108), dp(36)))
+                setOnClickListener { showTextVersionDialog() }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         })
         val verses = repository.verses(
             currentChapter.bookCode, currentChapter.chapter, selectedTextVersion
@@ -355,6 +371,19 @@ class MainActivity : Activity() {
         return container
     }
 
+    private fun compactChapterNavigation(): View = horizontal().apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(8), 0, dp(8), 0)
+        setBackgroundColor(colorSurface)
+        compactPreviousView = transportButton("‹", "Chương trước") { navigateChapter(-1) }
+            .apply { textSize = 24f }
+        compactNextView = transportButton("›", "Chương sau") { navigateChapter(1) }
+            .apply { textSize = 24f }
+        addView(compactPreviousView, LinearLayout.LayoutParams(dp(48), dp(48)))
+        addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+        addView(compactNextView, LinearLayout.LayoutParams(dp(48), dp(48)))
+    }
+
     private fun togglePlayback() {
         if (PlaybackStateStore.playWhenReady || PlaybackStateStore.isPlaying) {
             PlaybackStateStore.playWhenReady = false
@@ -431,19 +460,11 @@ class MainActivity : Activity() {
 
             sectionBooks.forEach { book ->
                 val active = book.code == currentChapter.bookCode
-                bookList.addView(TextView(this).apply {
-                    text = book.name
-                    textSize = if (active) 17f else 16f
-                    setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
-                    setTextColor(colorText)
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(16), dp(12), dp(16), dp(12))
-                    setOnClickListener {
-                        val chapter = chapters.firstOrNull { it.bookCode == book.code && it.chapter == 1 }
-                            ?: return@setOnClickListener
-                        dialog?.dismiss()
-                        selectChapter(chapter)
-                    }
+                bookList.addView(pickerChoice(book.name, active) {
+                    val chapter = chapters.firstOrNull { it.bookCode == book.code && it.chapter == 1 }
+                        ?: return@pickerChoice
+                    dialog?.dismiss()
+                    selectChapter(chapter)
                 }, matchWrap())
                 bookList.addView(View(this).apply {
                     setBackgroundColor(colorBorder)
@@ -703,28 +724,36 @@ class MainActivity : Activity() {
     }
 
     private fun showTextVersionDialog() {
-        val labels = textVersions.map { "${it.code}: ${it.title}" }.toTypedArray()
-        val selected = textVersions.indexOfFirst { it.code == selectedTextVersion }
-        AlertDialog.Builder(this)
-            .setTitle("Chọn bản dịch")
-            .setSingleChoiceItems(labels, selected) { dialog, index ->
-                val code = textVersions[index].code
-                dialog.dismiss()
-                if (code != selectedTextVersion) {
-                    selectedTextVersion = code
-                    books = repository.books(code)
-                    preferences.edit().putString(KEY_TEXT_VERSION, code).apply()
-                    val audioVersion = audioVersionForText(code)
-                    chapters = repository.chapters(audioVersion)
-                    if (audioVersion != currentChapter.audioVersion) {
-                        selectChapter(chapters.first { it.globalOrder == currentChapter.globalOrder })
-                    } else {
-                        renderReader()
-                    }
-                }
+        var dialog: AlertDialog? = null
+        val choices = vertical().apply {
+            setPadding(dp(16), dp(8), dp(16), dp(4))
+            textVersions.forEach { version ->
+                addView(pickerChoice(version.code, version.code == selectedTextVersion) {
+                    dialog?.dismiss()
+                    selectTextVersion(version.code)
+                }, matchWrap().apply { bottomMargin = dp(4) })
             }
+        }
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Chọn bản dịch")
+            .setView(choices)
             .setNegativeButton("Đóng", null)
-            .show()
+            .create()
+        dialog.show()
+    }
+
+    private fun selectTextVersion(code: String) {
+        if (code == selectedTextVersion) return
+        selectedTextVersion = code
+        books = repository.books(code)
+        preferences.edit().putString(KEY_TEXT_VERSION, code).apply()
+        val audioVersion = audioVersionForText(code)
+        chapters = repository.chapters(audioVersion)
+        if (audioVersion != currentChapter.audioVersion) {
+            selectChapter(chapters.first { it.globalOrder == currentChapter.globalOrder })
+        } else {
+            renderReader()
+        }
     }
 
     private fun audioStorageNote(): String = if (currentChapter.audioVersion == "VIE1925") {
@@ -764,6 +793,14 @@ class MainActivity : Activity() {
         val displayedChapter = currentChapter
         playerBookView?.text = "${readerBookName(displayedChapter.bookCode)}  ▾"
         playerChapterView?.text = "${displayedChapter.chapter}"
+        compactPreviousView?.apply {
+            isEnabled = displayedChapter.globalOrder > 1
+            alpha = if (isEnabled) 1f else 0.3f
+        }
+        compactNextView?.apply {
+            isEnabled = displayedChapter.globalOrder < chapters.size
+            alpha = if (isEnabled) 1f else 0.3f
+        }
         val offline = downloads.availableFile(displayedChapter) != null
         playerOfflineView?.text = if (offline) "Offline" else "Online"
         playerPositionView?.text = formatTime(PlaybackStateStore.positionMs)
@@ -785,6 +822,7 @@ class MainActivity : Activity() {
     private fun togglePlayerPanel() {
         playerPanelVisible = !playerPanelVisible
         playerBarView?.visibility = if (playerPanelVisible) View.VISIBLE else View.GONE
+        compactNavigationView?.visibility = if (playerPanelVisible) View.GONE else View.VISIBLE
         playerPanelToggleView?.contentDescription =
             if (playerPanelVisible) "Ẩn bảng điều khiển" else "Hiện bảng điều khiển"
         preferences.edit()
@@ -920,7 +958,7 @@ class MainActivity : Activity() {
     private fun speakerStatusButton(): View {
         return vertical().apply {
             gravity = Gravity.CENTER
-            contentDescription = "Ẩn hoặc hiện bảng điều khiển"
+            contentDescription = if (playerPanelVisible) "Ẩn bảng điều khiển" else "Hiện bảng điều khiển"
             setOnClickListener { togglePlayerPanel() }
             playerPanelToggleView = this
             addView(ImageView(this@MainActivity).apply {
@@ -995,6 +1033,35 @@ class MainActivity : Activity() {
             setPadding(dp(8), 0, dp(8), 0)
             background = rounded(colorBackground, colorBorder, 8)
             setOnClickListener { action() }
+        }
+    }
+
+    private fun pickerChoice(label: String, selected: Boolean, action: () -> Unit): View {
+        return horizontal().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(52)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            isSelected = selected
+            isFocusable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            contentDescription = if (selected) "$label, đang chọn" else label
+            if (selected) background = rounded(colorSelection)
+            setOnClickListener { action() }
+            addView(TextView(this@MainActivity).apply {
+                text = label
+                textSize = if (selected) 18f else 16f
+                setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+                setTextColor(colorText)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(this@MainActivity).apply {
+                text = if (selected) "✓" else ""
+                textSize = 20f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(colorText)
+                gravity = Gravity.END
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(32), ViewGroup.LayoutParams.WRAP_CONTENT))
         }
     }
 
