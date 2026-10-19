@@ -22,6 +22,7 @@ class MainActivityStartupTest {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("state", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("audio_downloads_v2", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences(PlaybackLoopStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit()
         PlaybackStateStore.currentOrder = 0
         PlaybackStateStore.audioVersion = "VIE1925"
         PlaybackStateStore.playWhenReady = false

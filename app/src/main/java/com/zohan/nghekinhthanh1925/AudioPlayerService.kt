@@ -29,6 +29,7 @@ class AudioPlayerService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var repository: BibleRepository
     private lateinit var downloads: AudioDownloadStore
+    private lateinit var loops: PlaybackLoopStore
     private lateinit var preferences: android.content.SharedPreferences
     private lateinit var chapters: List<BibleChapter>
     private lateinit var mediaSession: MediaSession
@@ -85,6 +86,7 @@ class AudioPlayerService : Service() {
         super.onCreate()
         repository = BibleRepository(applicationContext)
         downloads = AudioDownloadStore(applicationContext)
+        loops = PlaybackLoopStore(applicationContext)
         preferences = getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
         PlaybackStateStore.audioVersion = preferences.getString(KEY_AUDIO_VERSION, "VIE1925") ?: "VIE1925"
         chapters = repository.chapters(PlaybackStateStore.audioVersion)
@@ -131,23 +133,20 @@ class AudioPlayerService : Service() {
         expireSleepIfNeeded()
         if (intent == null) {
             if (preferences.getBoolean(KEY_WAS_PLAYING, false)) {
-                playOrder(
-                    preferences.getInt(KEY_LAST_ORDER, 1),
-                    autoPlay = true,
-                    startFromBeginning = false
-                )
+                resumePlayback()
             } else {
                 stopSelf()
             }
             return START_STICKY
         }
         when (intent?.action) {
-            ACTION_PLAY_ORDER, ACTION_SELECT_ORDER -> playOrder(
-                intent.getIntExtra(EXTRA_ORDER, preferences.getInt(KEY_LAST_ORDER, 1)),
-                intent.getBooleanExtra(EXTRA_AUTO_PLAY, true),
-                intent.getBooleanExtra(EXTRA_START_FROM_BEGINNING, false),
-                intent.getStringExtra(EXTRA_AUDIO_VERSION) ?: PlaybackStateStore.audioVersion
-            )
+            ACTION_PLAY_ORDER, ACTION_SELECT_ORDER -> {
+                val order = intent.getIntExtra(EXTRA_ORDER, preferences.getInt(KEY_LAST_ORDER, 1))
+                val version = intent.getStringExtra(EXTRA_AUDIO_VERSION) ?: PlaybackStateStore.audioVersion
+                loops.onManualSelection(currentChapter?.audioVersion ?: PlaybackStateStore.audioVersion, version, order)
+                playOrder(order, intent.getBooleanExtra(EXTRA_AUTO_PLAY, true),
+                    intent.getBooleanExtra(EXTRA_START_FROM_BEGINNING, false), version)
+            }
             ACTION_TOGGLE -> togglePlayPause()
             ACTION_PAUSE -> pausePlayback()
             ACTION_RESUME -> resumePlayback()
@@ -271,13 +270,16 @@ class AudioPlayerService : Service() {
             }
             player.setOnCompletionListener {
                 if (generation != playbackGeneration || !PlaybackStateStore.playWhenReady) return@setOnCompletionListener
-                preferences.edit().putLong(chapter.positionKey, 0L).apply()
-                if (chapter.globalOrder == chapters.last().globalOrder) {
+                val next = loops.load(chapter.audioVersion).relativeOrder(chapter.globalOrder, 1)
+                    ?: chapters.firstOrNull { it.globalOrder == chapter.globalOrder + 1 }?.globalOrder
+                if (next == null) {
                     pausePlayback()
                     seekTo(0)
-                    return@setOnCompletionListener
+                } else {
+                    playOrder(next, autoPlay = true, startFromBeginning = true)
                 }
-                playRelative(1, autoPlay = true)
+                // playOrder saves the old player position before releasing it.
+                preferences.edit().putLong(chapter.positionKey, 0L).apply()
             }
             player.setOnErrorListener { _, _, _ ->
                 if (generation != playbackGeneration) return@setOnErrorListener true
@@ -300,7 +302,10 @@ class AudioPlayerService : Service() {
         PlaybackStateStore.playWhenReady = true
         resumeAfterFocusGain = false
         if (mediaPlayer == null) {
-            playOrder(currentChapter?.globalOrder ?: preferences.getInt(KEY_LAST_ORDER, 1))
+            val order = currentChapter?.globalOrder ?: preferences.getInt(KEY_LAST_ORDER, 1)
+            val loop = loops.load(PlaybackStateStore.audioVersion)
+            val target = if (loop.enabled && order !in loop.orders) loop.orders.first() else order
+            playOrder(target, startFromBeginning = target != order)
             return
         }
         if (!prepared) return
@@ -340,7 +345,8 @@ class AudioPlayerService : Service() {
         autoPlay: Boolean = PlaybackStateStore.playWhenReady || PlaybackStateStore.isPlaying
     ) {
         val order = currentChapter?.globalOrder ?: preferences.getInt(KEY_LAST_ORDER, 1)
-        chapters.firstOrNull { it.globalOrder == order + offset }?.let {
+        val target = loops.load(PlaybackStateStore.audioVersion).relativeOrder(order, offset) ?: order + offset
+        chapters.firstOrNull { it.globalOrder == target }?.let {
             playOrder(it.globalOrder, autoPlay = autoPlay, startFromBeginning = true)
         }
     }

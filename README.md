@@ -56,6 +56,19 @@ Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
   Kiem tra cap nhat, Gioi thieu. Giu nguyen kieu dong cua cac muc con lai.
 - Ngon ngu giao dien doc lap voi ban dich Kinh Thanh; lua chon duoc ghi nho.
 - Ngay/Dem doi ngay trong menu, khong mo hop thoai va khong theo he thong.
+- Menu Phat lap: chon nhieu sach hoac tung chuong, phat theo thu tu da chon
+  roi quay lai muc dau. Tich sach them cac chuong chua chon theo thu tu chuong.
+- Luu nhieu vong lap co ten rieng. Danh sach gon: bam ten de dung, menu tung
+  vong lap de sua lua chon, doi ten hoac xoa. Moi ban audio dung mot vong lap.
+- Ten khong duoc trung nhau trong cung ban audio; toi da 48 ky tu. Tat phat lap
+  khong xoa lua chon. Xoa vong lap dang dung chi tat lap, khong dung audio.
+- Xem thu tu phat truoc khi ap dung; bo chon roi chon lai dua chuong ve cuoi hang doi.
+- Ap dung lua chon moi chuyen den chuong dau cua hang doi nhung khong tu phat
+  neu dang tam dung. Luu lai cung lua chon khong lam gian doan audio.
+- Next/previous theo hang doi lap. Chon tay chuong ngoai hang doi tat phat lap,
+  nhung giu lua chon da luu. Doi ban audio tat lap; NIV va VIE1925 luu rieng.
+- Phat lap dung callback ket thuc chuong, khong them polling, wake lock, hay
+  tu tai audio. Hen gio va xu ly cuoc goi/audio focus van duoc giu nguyen.
 - Gioi thieu nam cuoi menu, co tieu de va cac muc noi dung/audio/nguon rieng.
 - Ghi nho giao dien; doi giao dien khong khoi dong lai audio.
 - Nut ban dich nam duoi tieu de chuong. Doi ban dich giu nguyen sach/chuong,

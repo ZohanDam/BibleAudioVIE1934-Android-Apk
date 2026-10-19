@@ -1,0 +1,7 @@
+<resources>
+    <declare-styleable name="LoopPalette">
+        <attr name="android:textColorPrimary" />
+        <attr name="android:textColorSecondary" />
+        <attr name="android:colorControlHighlight" />
+    </declare-styleable>
+</resources>

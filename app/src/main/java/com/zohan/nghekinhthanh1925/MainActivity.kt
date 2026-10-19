@@ -45,6 +45,7 @@ class MainActivity : Activity() {
 
     private lateinit var repository: BibleRepository
     private lateinit var downloads: AudioDownloadStore
+    private val loops by lazy { PlaybackLoopStore(applicationContext) }
     private lateinit var appUpdates: AppUpdateController
     private lateinit var preferences: android.content.SharedPreferences
     private lateinit var books: List<BibleBook>
@@ -451,13 +452,15 @@ class MainActivity : Activity() {
     }
 
     private fun navigateChapter(offset: Int) {
-        val index = currentChapter.globalOrder - 1 + offset
-        val chapter = chapters.getOrNull(index) ?: return
-        selectChapter(chapter)
+        val loopOrder = loops.load(currentChapter.audioVersion).relativeOrder(currentChapter.globalOrder, offset)
+        val order = loopOrder ?: currentChapter.globalOrder + offset
+        val chapter = chapters.getOrNull(order - 1) ?: return
+        selectChapter(chapter, restart = loopOrder == currentChapter.globalOrder)
     }
 
-    private fun selectChapter(chapter: BibleChapter) {
-        if (chapter.globalOrder == currentChapter.globalOrder && chapter.audioVersion == currentChapter.audioVersion) return
+    private fun selectChapter(chapter: BibleChapter, restart: Boolean = false) {
+        loops.onManualSelection(currentChapter.audioVersion, chapter.audioVersion, chapter.globalOrder)
+        if (!restart && chapter.globalOrder == currentChapter.globalOrder && chapter.audioVersion == currentChapter.audioVersion) return
         val continuePlaying = PlaybackStateStore.playWhenReady || PlaybackStateStore.isPlaying
         currentChapter = chapter
         PlaybackStateStore.audioVersion = chapter.audioVersion
@@ -913,14 +916,15 @@ class MainActivity : Activity() {
 
     private fun updatePlayerBar() {
         val displayedChapter = currentChapter
+        val looping = loops.load(displayedChapter.audioVersion).enabled
         playerBookView?.text = "${readerBookName(displayedChapter.bookCode)}  ▾"
         playerChapterView?.text = "${displayedChapter.chapter}"
         compactPreviousView?.apply {
-            isEnabled = displayedChapter.globalOrder > 1
+            isEnabled = looping || displayedChapter.globalOrder > 1
             alpha = if (isEnabled) 1f else 0.3f
         }
         compactNextView?.apply {
-            isEnabled = displayedChapter.globalOrder < chapters.size
+            isEnabled = looping || displayedChapter.globalOrder < chapters.size
             alpha = if (isEnabled) 1f else 0.3f
         }
         val offline = downloads.availableFile(displayedChapter) != null
@@ -1020,6 +1024,18 @@ class MainActivity : Activity() {
                 popup?.dismiss()
                 refreshReaderOptions()
             })
+            addView(settingsMenuItem("", uiText("Phát lặp", "Loop playback"), R.drawable.ic_repeat) {
+                popup?.dismiss()
+                showLoopPlaybackDialog()
+            }.apply {
+                isSelected = loops.load(currentChapter.audioVersion).enabled
+                if (isSelected) (this as LinearLayout).addView(TextView(this@MainActivity).apply {
+                    text = uiText("Bật", "On")
+                    textSize = 12f
+                    setTextColor(colorMuted)
+                    setPadding(dp(12), 0, 0, 0)
+                })
+            })
             addView(settingsMenuItem("", uiText("Kiểm tra cập nhật", "Check for updates"),
                 R.drawable.ic_system_update) {
                 popup?.dismiss()
@@ -1043,6 +1059,22 @@ class MainActivity : Activity() {
             })
             showAsDropDown(anchor, -dp(6), -dp(4))
         }
+    }
+
+    private fun showLoopPlaybackDialog() {
+        val version = currentChapter.audioVersion
+        val loopChapters = chapters
+        PlaybackLoopPresetsDialog(this, books, loopChapters, loops,
+            canActivate = { version == currentChapter.audioVersion && version == PlaybackStateStore.audioVersion },
+            onPlaybackChanged = onChanged@ { original, selection ->
+                if (version != currentChapter.audioVersion || version != PlaybackStateStore.audioVersion) return@onChanged
+                val playingOrder = PlaybackStateStore.currentOrder.takeIf { it > 0 } ?: currentChapter.globalOrder
+                if (selection.enabled && selection != original && playingOrder != selection.orders.first()) {
+                    loopChapters.firstOrNull { it.globalOrder == selection.orders.first() }?.let {
+                        selectChapter(it, restart = it.globalOrder == currentChapter.globalOrder)
+                    }
+                } else updatePlayerBar()
+            }).show()
     }
 
     private fun applyReaderTheme() {

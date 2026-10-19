@@ -12,6 +12,9 @@ import android.widget.LinearLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.Button
+import android.widget.CheckBox
+import android.widget.GridLayout
+import android.widget.Switch
 import java.time.Duration
 import org.junit.Assert.*
 import org.junit.Before
@@ -34,6 +37,8 @@ class ReaderControlsTest {
 
     @Before fun reset() {
         preferences.edit().clear().commit()
+        RuntimeEnvironment.getApplication().getSharedPreferences(PlaybackLoopStore.PREFERENCES, Context.MODE_PRIVATE)
+            .edit().clear().commit()
         RuntimeEnvironment.getApplication()
             .getSharedPreferences("audio_downloads_v2", Context.MODE_PRIVATE).edit().clear().commit()
         PlaybackStateStore.currentOrder = 0
@@ -241,9 +246,9 @@ class ReaderControlsTest {
 
     @Test fun gearMenuHasLabeledOptionsAndStructuredAboutLast() = withReader { activity ->
         val (popup, rows) = menuRows(activity, "Cài đặt")
-        val labels = listOf("Cỡ chữ", "Ngôn ngữ và giao diện", "Kiểm tra cập nhật", "Giới thiệu")
+        val labels = listOf("Cỡ chữ", "Ngôn ngữ và giao diện", "Phát lặp", "Kiểm tra cập nhật", "Giới thiệu")
         assertEquals(labels, rows.map { it.contentDescription.toString() })
-        listOf(0, 2, 3).forEach { index ->
+        listOf(0, 2, 3, 4).forEach { index ->
             val row = rows[index]
             val label = labels[index]
             assertTrue(views(row).filterIsInstance<TextView>().any { it.text.toString() == label })
@@ -251,7 +256,7 @@ class ReaderControlsTest {
         assertEquals(listOf("VN", "EN"), views(rows[1]).filterIsInstance<TextView>().map { it.text.toString() })
         assertEquals(listOf("Ngày", "Đêm"), views(rows[1]).filterIsInstance<ImageButton>().map { it.contentDescription.toString() })
         assertTrue(views(rows[1]).single { it.contentDescription == "VN" }.isSelected)
-        assertTrue("Update must use a distinct vector icon", rows[2].getChildAt(0) is ImageView)
+        assertTrue("Update must use a distinct vector icon", rows[3].getChildAt(0) is ImageView)
         rows.last().performClick()
         assertFalse(popup.isShowing)
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
@@ -271,7 +276,7 @@ class ReaderControlsTest {
             assertTrue(texts.contains("Chapter 2"))
             assertFalse(texts.contains("Chương 2"))
             val (_, rows) = menuRows(activity, "Settings")
-            assertEquals(listOf("Font", "Language and appearance", "Check for updates", "About"),
+            assertEquals(listOf("Font", "Language and appearance", "Loop playback", "Check for updates", "About"),
                 rows.map { it.contentDescription.toString() })
             rows.last().performClick()
             val dialog = ShadowAlertDialog.getLatestAlertDialog()
@@ -331,6 +336,243 @@ class ReaderControlsTest {
         assertNotNull(control(activity, "Thu gọn bảng điều khiển"))
         assertNotNull(control(activity, "Phát hoặc tạm dừng"))
         assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    private fun loopDialog(activity: MainActivity): android.app.AlertDialog {
+        val (_, rows) = menuRows(activity, "Cài đặt")
+        rows.single { it.contentDescription == "Phát lặp" }.performClick()
+        val manager = ShadowAlertDialog.getLatestAlertDialog()
+        manager.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        return ShadowAlertDialog.getLatestAlertDialog().also {
+            (tagged(it, "loopName") as android.widget.EditText).setText("Evening")
+        }
+    }
+
+    private fun tagged(dialog: android.app.AlertDialog, tag: String): View =
+        views(dialog.window!!.decorView).single { it.tag == tag }
+
+    private fun loopManager(activity: MainActivity): android.app.AlertDialog {
+        val (_, rows) = menuRows(activity, "Cài đặt")
+        rows.single { it.contentDescription == "Phát lặp" }.performClick()
+        return ShadowAlertDialog.getLatestAlertDialog()
+    }
+
+    @Test fun savedLoopListSwitchesBetweenNamedPresetsWithoutAutoplayAndOffRetainsThem() = withReader { activity ->
+        val store = PlaybackLoopStore(activity)
+        val first = store.savePreset("VIE1925", "Evening", listOf(3, 1))
+        val second = store.savePreset("VIE1925", "Morning", listOf(51, 2))
+        val manager = loopManager(activity)
+        tagged(manager, "loopPreset:${first.id}").performClick()
+        assertEquals(3, PlaybackStateStore.currentOrder)
+        tagged(manager, "loopPreset:${second.id}").performClick()
+        assertEquals(51, PlaybackStateStore.currentOrder)
+        assertEquals(second.id, store.selectedPresetId("VIE1925"))
+        assertFalse(PlaybackStateStore.playWhenReady)
+        tagged(manager, "loopOff").performClick()
+        assertFalse(store.load("VIE1925").enabled)
+        assertEquals(2, store.presets("VIE1925").size)
+        assertEquals(51, PlaybackStateStore.currentOrder)
+        manager.dismiss()
+    }
+
+    @Test fun loopEditorRejectsBlankOrDuplicateNameAndKeepsDraftUntilSaved() = withReader { activity ->
+        val store = PlaybackLoopStore(activity)
+        store.savePreset("VIE1925", "Evening", listOf(1))
+        val editor = loopDialog(activity)
+        tagged(editor, "loopBook:EXO").performClick()
+        val name = tagged(editor, "loopName") as android.widget.EditText
+        name.setText(" ")
+        editor.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertTrue(editor.isShowing)
+        assertNotNull(name.error)
+        name.setText(" evening ")
+        editor.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertTrue(editor.isShowing)
+        assertEquals(1, store.presets("VIE1925").size)
+        name.setText("Morning")
+        editor.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertFalse(editor.isShowing)
+        assertEquals(listOf("Evening", "Morning"), store.presets("VIE1925").map { it.name })
+        assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test fun renamingAndDeletingActiveLoopPreserveAudioStateAndOtherPresets() = withReader { activity ->
+        val store = PlaybackLoopStore(activity)
+        val active = store.savePreset("VIE1925", "Evening", listOf(1, 3))
+        val other = store.savePreset("VIE1925", "Morning", listOf(2))
+        store.activatePreset("VIE1925", active.id)
+        PlaybackStateStore.isPlaying = true
+        PlaybackStateStore.playWhenReady = true
+        PlaybackStateStore.positionMs = 17_000
+        val manager = loopManager(activity)
+        tagged(manager, "loopOptions:${active.id}").performClick()
+        shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(1)
+        val rename = ShadowAlertDialog.getLatestAlertDialog()
+        (tagged(rename, "loopRename") as android.widget.EditText).setText("Night reading")
+        rename.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals("Night reading", store.presets("VIE1925").first().name)
+        assertEquals(active.id, store.selectedPresetId("VIE1925"))
+        assertEquals(17_000, PlaybackStateStore.positionMs)
+        assertTrue(PlaybackStateStore.playWhenReady)
+        tagged(manager, "loopOptions:${active.id}").performClick()
+        shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(2)
+        val confirm = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(store.load("VIE1925").enabled)
+        confirm.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(store.load("VIE1925").enabled)
+        assertEquals(listOf(other), store.presets("VIE1925"))
+        assertTrue(PlaybackStateStore.playWhenReady)
+        assertEquals(17_000, PlaybackStateStore.positionMs)
+        manager.dismiss()
+    }
+
+    @Test fun editingInactivePresetDoesNotActivateItOrInterruptCurrentLoop() = withReader { activity ->
+        val store = PlaybackLoopStore(activity)
+        val active = store.savePreset("VIE1925", "Evening", listOf(1, 3))
+        val other = store.savePreset("VIE1925", "Morning", listOf(2))
+        store.activatePreset("VIE1925", active.id)
+        PlaybackStateStore.positionMs = 17_000
+        val manager = loopManager(activity)
+        tagged(manager, "loopOptions:${other.id}").performClick()
+        shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0)
+        val editor = ShadowAlertDialog.getLatestAlertDialog()
+        assertFalse(views(editor.window!!.decorView).filterIsInstance<Switch>().single().isChecked)
+        tagged(editor, "loopBook:EXO").performClick()
+        editor.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals(active.id, store.selectedPresetId("VIE1925"))
+        assertEquals(PlaybackLoopSelection(true, listOf(1, 3)), store.load("VIE1925"))
+        assertEquals(listOf(2) + (51..90).toList(), store.presets("VIE1925").last().orders)
+        assertEquals(17_000, PlaybackStateStore.positionMs)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        manager.dismiss()
+    }
+
+    @Test fun savingUnchangedActivePresetDoesNotRestartCurrentChapter() = withReader { activity ->
+        val store = PlaybackLoopStore(activity)
+        val preset = store.savePreset("VIE1925", "Evening", listOf(3, 1))
+        store.activatePreset("VIE1925", preset.id)
+        PlaybackStateStore.positionMs = 17_000
+        PlaybackStateStore.isPlaying = true
+        PlaybackStateStore.playWhenReady = true
+        val manager = loopManager(activity)
+        tagged(manager, "loopOptions:${preset.id}").performClick()
+        shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0)
+        ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals(1, PlaybackStateStore.currentOrder)
+        assertEquals(17_000, PlaybackStateStore.positionMs)
+        assertTrue(PlaybackStateStore.playWhenReady)
+        manager.dismiss()
+    }
+
+    @Test fun loopChaptersKeepTapOrderAndApplyWithoutStartingPausedAudio() = withReader { activity ->
+        val dialog = loopDialog(activity)
+        tagged(dialog, "loopChapters:GEN").performClick()
+        val chapters = ShadowAlertDialog.getLatestAlertDialog()
+        assertEquals(5, views(chapters.window!!.decorView).filterIsInstance<GridLayout>().single().columnCount)
+        val buttons = views(chapters.window!!.decorView).filterIsInstance<Button>()
+            .filter { it.tag?.toString()?.startsWith("loopChapter:") == true }
+        assertEquals((1..50).map { it.toString() }, buttons.map { it.text.toString() })
+        tagged(chapters, "loopChapter:3").performClick()
+        tagged(chapters, "loopChapter:1").performClick()
+        assertTrue(tagged(chapters, "loopChapter:3").isSelected)
+        assertFalse(PlaybackLoopStore(activity).load("VIE1925").enabled)
+        chapters.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals(PlaybackLoopSelection(true, listOf(3, 1)), PlaybackLoopStore(activity).load("VIE1925"))
+        assertEquals(3, PlaybackStateStore.currentOrder)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        val intent = shadowOf(RuntimeEnvironment.getApplication()).nextStartedService
+        assertEquals(AudioPlayerService.ACTION_SELECT_ORDER, intent.action)
+        assertFalse(intent.getBooleanExtra(AudioPlayerService.EXTRA_AUTO_PLAY, true))
+    }
+
+    @Test fun loopWholeBooksAppendInChosenOrderAndCancelDoesNotSave() = withReader { activity ->
+        val dialog = loopDialog(activity)
+        (tagged(dialog, "loopBook:EXO") as CheckBox).performClick()
+        (tagged(dialog, "loopBook:GEN") as CheckBox).performClick()
+        assertEquals("50/50 ▾", (tagged(dialog, "loopChapters:GEN") as Button).text.toString())
+        dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(PlaybackLoopStore(activity).load("VIE1925").orders.isEmpty())
+        val reopened = loopDialog(activity)
+        tagged(reopened, "loopBook:EXO").performClick()
+        tagged(reopened, "loopBook:GEN").performClick()
+        reopened.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals((51..90).toList() + (1..50).toList(), PlaybackLoopStore(activity).load("VIE1925").orders)
+        assertEquals("Evening", PlaybackLoopStore(activity).presets("VIE1925").single().name)
+        assertEquals(51, PlaybackStateStore.currentOrder)
+        assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test fun emptyLoopCannotBeAppliedAsEnabled() = withReader { activity ->
+        val dialog = loopDialog(activity)
+        val toggle = views(dialog.window!!.decorView).filterIsInstance<Switch>().single()
+        assertTrue(toggle.isChecked)
+        assertFalse(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled)
+        toggle.performClick()
+        assertFalse(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled)
+        dialog.dismiss()
+    }
+
+    @Test fun applyingLoopUsesActualPlayerOrderWhenDisplayedChapterHasNotCaughtUp() = withReader { activity ->
+        val dialog = loopDialog(activity)
+        tagged(dialog, "loopChapters:GEN").performClick()
+        val chapters = ShadowAlertDialog.getLatestAlertDialog()
+        tagged(chapters, "loopChapter:1").performClick()
+        tagged(chapters, "loopChapter:3").performClick()
+        chapters.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        PlaybackStateStore.currentOrder = 2
+        PlaybackStateStore.isPlaying = true
+        PlaybackStateStore.playWhenReady = true
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals(1, PlaybackStateStore.currentOrder)
+        assertTrue(PlaybackStateStore.playWhenReady)
+        val intent = shadowOf(RuntimeEnvironment.getApplication()).nextStartedService
+        assertEquals(AudioPlayerService.ACTION_PLAY_ORDER, intent.action)
+        assertEquals(1, intent.getIntExtra(AudioPlayerService.EXTRA_ORDER, -1))
+    }
+
+    @Test fun collapsedLoopArrowsWrapAtBibleBoundariesWithoutAutoplay() {
+        preferences.edit().putInt("lastOrder", 1189).putBoolean("playerPanelVisible", false).commit()
+        PlaybackLoopStore(RuntimeEnvironment.getApplication())
+            .save("VIE1925", PlaybackLoopSelection(true, listOf(1189, 1)))
+        withReader { activity ->
+            assertTrue(control(activity, "Chương sau").isEnabled)
+            control(activity, "Chương sau").performClick()
+            assertEquals(1, PlaybackStateStore.currentOrder)
+            assertTrue(control(activity, "Chương trước").isEnabled)
+            control(activity, "Chương trước").performClick()
+            assertEquals(1189, PlaybackStateStore.currentOrder)
+            assertTrue(PlaybackLoopStore(activity).load("VIE1925").enabled)
+            assertFalse(PlaybackStateStore.playWhenReady)
+        }
+    }
+
+    @Test fun singleChapterLoopArrowRestartsPositionWithoutAutoplay() {
+        PlaybackLoopStore(RuntimeEnvironment.getApplication()).save("VIE1925", PlaybackLoopSelection(true, listOf(1)))
+        withReader { activity ->
+            PlaybackStateStore.positionMs = 20_000
+            control(activity, "Chương sau").performClick()
+            assertEquals(1, PlaybackStateStore.currentOrder)
+            assertEquals(0, PlaybackStateStore.positionMs)
+            assertFalse(PlaybackStateStore.playWhenReady)
+            assertTrue(PlaybackLoopStore(activity).load("VIE1925").enabled)
+        }
+    }
+
+    @Test fun manualChapterPickerOutsideLoopTurnsLoopOffAndRetainsChoices() {
+        PlaybackLoopStore(RuntimeEnvironment.getApplication()).save("VIE1925", PlaybackLoopSelection(true, listOf(1, 2)))
+        withReader { activity ->
+            control(activity, "Chọn chương").performClick()
+            val dialog = ShadowAlertDialog.getLatestAlertDialog()
+            views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text.toString() == "3" }.performClick()
+            assertEquals(PlaybackLoopSelection(false, listOf(1, 2)), PlaybackLoopStore(activity).load("VIE1925"))
+            assertEquals(3, PlaybackStateStore.currentOrder)
+            assertFalse(PlaybackStateStore.playWhenReady)
+        }
     }
 
     @Test fun timerCountdownUpdatesInWholeMinutesInPlayerAndDialog() {

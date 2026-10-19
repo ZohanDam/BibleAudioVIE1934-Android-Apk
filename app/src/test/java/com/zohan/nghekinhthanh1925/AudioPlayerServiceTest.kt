@@ -37,6 +37,7 @@ class AudioPlayerServiceTest {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("state", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("audio_downloads_v2", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences(PlaybackLoopStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit()
         PlaybackStateStore.currentOrder = 0
         PlaybackStateStore.isPlaying = false
         PlaybackStateStore.playWhenReady = false
@@ -373,6 +374,135 @@ class AudioPlayerServiceTest {
             isAccessible = true
         }.get(service) as AudioManager.OnAudioFocusChangeListener
         listener.onAudioFocusChange(change)
+    }
+
+    @Test fun loopCompletionFollowsChosenOrderAndWrapsFromLastSelection() {
+        select(3, "VIE1925", false)
+        PlaybackLoopStore(service).save("VIE1925", PlaybackLoopSelection(true, listOf(3, 1, 2)))
+        select(3, "VIE1925", true)
+        prepare()
+        for (expected in listOf(1, 2, 3)) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(60))
+            assertEquals(expected, PlaybackStateStore.currentOrder)
+            assertEquals(0, PlaybackStateStore.positionMs)
+            assertTrue(PlaybackStateStore.playWhenReady)
+            prepare()
+            assertTrue(player()!!.isPlaying)
+        }
+        assertEquals(0L, service.getSharedPreferences("state", Context.MODE_PRIVATE).getLong("position_2", -1))
+    }
+
+    @Test fun lastBibleChapterCanLoopByItself() {
+        select(1189, "VIE1925", false)
+        PlaybackLoopStore(service).save("VIE1925", PlaybackLoopSelection(true, listOf(1189)))
+        select(1189, "VIE1925", true)
+        prepare()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(60))
+        assertEquals(1189, PlaybackStateStore.currentOrder)
+        assertEquals(0, PlaybackStateStore.positionMs)
+        assertTrue(PlaybackStateStore.playWhenReady)
+        prepare()
+        assertTrue(player()!!.isPlaying)
+    }
+
+    @Test fun pausedLoopNavigationWrapsWithoutCreatingPlayer() {
+        select(3, "VIE1925", false)
+        PlaybackLoopStore(service).save("VIE1925", PlaybackLoopSelection(true, listOf(3, 1)))
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(1, PlaybackStateStore.currentOrder)
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(3, PlaybackStateStore.currentOrder)
+        action(AudioPlayerService.ACTION_PREVIOUS)
+        assertEquals(1, PlaybackStateStore.currentOrder)
+        assertNull(player())
+        assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test fun manualChapterOutsideLoopDisablesItAndReturnsToNormalSequence() {
+        select(3, "VIE1925", false)
+        val loops = PlaybackLoopStore(service)
+        loops.save("VIE1925", PlaybackLoopSelection(true, listOf(3, 1)))
+        select(10, "VIE1925", false)
+        assertFalse(loops.load("VIE1925").enabled)
+        assertEquals(listOf(3, 1), loops.load("VIE1925").orders)
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(11, PlaybackStateStore.currentOrder)
+        assertNull(player())
+    }
+
+    @Test fun manualChapterInsideLoopKeepsSelectedSequence() {
+        select(3, "VIE1925", false)
+        val loops = PlaybackLoopStore(service)
+        loops.save("VIE1925", PlaybackLoopSelection(true, listOf(3, 1, 10)))
+        select(1, "VIE1925", false)
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(10, PlaybackStateStore.currentOrder)
+        assertTrue(loops.load("VIE1925").enabled)
+        assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test fun nivLoopUsesOnlyNivAudioAndEditionChangeDisablesIt() {
+        select(10, "NIV", false)
+        val loops = PlaybackLoopStore(service)
+        loops.save("NIV", PlaybackLoopSelection(true, listOf(10, 2)))
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals("NIV", PlaybackStateStore.audioVersion)
+        assertEquals(2, PlaybackStateStore.currentOrder)
+        select(2, "VIE1925", false)
+        assertFalse(loops.load("NIV").enabled)
+        assertEquals(listOf(10, 2), loops.load("NIV").orders)
+    }
+
+    @Test fun sleepTimerStopsLoopAndDoesNotRestartAfterFocusGain() {
+        ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(10_000, 1000) }
+        select(1, "VIE1925", false)
+        val loops = PlaybackLoopStore(service)
+        loops.save("VIE1925", PlaybackLoopSelection(true, listOf(1, 2)))
+        select(1, "VIE1925", true)
+        prepare()
+        timer(1)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+        focus(AudioManager.AUDIOFOCUS_GAIN)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertFalse(PlaybackStateStore.playWhenReady)
+        assertFalse(PlaybackStateStore.isPlaying)
+        assertEquals(0L, PlaybackStateStore.sleepDeadlineElapsed)
+        assertTrue(loops.load("VIE1925").enabled)
+    }
+
+    @Test fun loopSurvivesServiceRecreationAndResumesSavedSequence() {
+        select(3, "VIE1925", false)
+        PlaybackLoopStore(service).save("VIE1925", PlaybackLoopSelection(true, listOf(3, 2)))
+        select(3, "VIE1925", true)
+        prepare()
+        controller.destroy()
+        controller = Robolectric.buildService(AudioPlayerService::class.java).create()
+        service = controller.get()
+        service.onStartCommand(null, 0, 1)
+        prepare()
+        assertTrue(player()!!.isPlaying)
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(2, PlaybackStateStore.currentOrder)
+        assertTrue(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test fun changingNamedPresetIsVisibleToServiceAndDeletedPresetReturnsToNormalOrder() {
+        select(3, "VIE1925", false)
+        val store = PlaybackLoopStore(service)
+        val first = store.savePreset("VIE1925", "Night", listOf(3, 1))
+        val second = store.savePreset("VIE1925", "Morning", listOf(3, 20))
+        store.activatePreset("VIE1925", first.id)
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(1, PlaybackStateStore.currentOrder)
+        store.activatePreset("VIE1925", second.id)
+        select(3, "VIE1925", false)
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(20, PlaybackStateStore.currentOrder)
+        store.deletePreset("VIE1925", second.id)
+        action(AudioPlayerService.ACTION_NEXT)
+        assertEquals(21, PlaybackStateStore.currentOrder)
+        assertFalse(PlaybackStateStore.playWhenReady)
+        assertNull(player())
     }
 
     private fun startBetweenCheckpoints() {
