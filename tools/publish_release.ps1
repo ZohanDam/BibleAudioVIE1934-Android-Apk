@@ -6,6 +6,7 @@ param(
     [string]$Notes = 'Cap nhat ung dung tu GitHub; giu audio offline va cai dat.'
 )
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'check_project.ps1')
 $repository = 'ZohanDam/BibleAudioVIE1934-Android-Apk'
 $apk = Get-Item -LiteralPath $ApkPath
 $metadataPath = Join-Path $apk.DirectoryName 'output-metadata.json'
@@ -74,7 +75,7 @@ $manifest = [ordered]@{
 }
 $releaseBody = @{
     tag_name="v$version"; target_commitish=$SourceCommit; name="Kinh Thanh $version"
-    body=$Notes + "`n`nInstall this APK over version 2.15 or later. Do not uninstall: offline audio and settings are retained.`n`nAfter this installation: Settings (gear) > Check for updates / Kiem tra cap nhat. Android installation confirmation is required."
+    body="## Install`nDownload **$assetName** under Assets below. Do not download Source code or update.json.`n`nInstall over the existing app (2.15 or later). Do not uninstall: offline audio and settings are retained.`n`nFor future updates: Settings > Check for updates.`n`n## Changes`n$Notes`n`n[Project guide](https://github.com/$repository#readme)"
     draft=$true; prerelease=$false
 } | ConvertTo-Json
 $release = Invoke-RestMethod -Uri "$api/releases" -Headers $headers -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($releaseBody))
@@ -113,4 +114,9 @@ try {
     $client.Dispose()
     $credential.Clear()
     $headers.Clear()
+}
+try {
+    & (Join-Path $PSScriptRoot 'sync_latest_release.ps1') -ExpectedVersion $version
+} catch {
+    Write-Warning "Release is published, but the local installer was not refreshed: $_. Run tools/sync_latest_release.ps1 again."
 }

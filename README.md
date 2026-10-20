@@ -1,222 +1,114 @@
-# Nghe Kinh Thanh 1925 Offline
+# Bible Audio / Nghe Kinh Thanh
 
-## Cai Dat Va Cap Nhat
+**[DOWNLOAD THE LATEST ANDROID APP](https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/latest)**
 
-Ban moi nhat: https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/latest
+This README is the single guide for users, developers, and AI assistants.
+GitHub Releases contains installers. The repository contains source code, not APKs.
 
-- Tren Android, chi tai tep `.apk` trong Releases va mo de cai dat.
-  Khong can tai Source code hoac update.json. Audio tai rieng trong ung dung.
-- Cai APK tu Releases mot lan de them chuc nang cap nhat trong ung dung.
-- Tu ban 2.19: menu ba cham > bieu tuong cap nhat > Tai cap nhat.
-- Tu ban 2.21: nut banh rang > Kiem tra cap nhat (Check for updates).
-- Ung dung chi kiem tra khi nguoi dung yeu cau, khong tham do nen.
-- Lan dau, Android co the yeu cau bat quyen cai ung dung tu nguon nay.
-- Android luon hien man hinh xac nhan cai dat; khong cai am tham.
-- Cai de len ban 2.15 tro len, khong go cai dat de giu audio va tuy chon.
-- Ban 2.14 cu dung khoa ky khac, khong the cap nhat de bang khoa hien tai.
-  Giu ban cu va sao luu audio truoc khi thay doi cach cai dat.
-- APK cu o thu muc goc duoc giu de luu tru, khong phai ban moi nhat.
+## Install Or Update
 
-Updater doc GitHub Release moi nhat va asset update.json. Truoc khi mo
-trinh cai dat, kiem tra HTTPS, repo, kich thuoc, SHA-256, package, versionCode,
-phien ban Android va chu ky trung voi ung dung da cai. Tep nam trong cache
-rieng; provider chi chia se APK cap nhat o che do chi doc, khong chia se audio.
+1. Open the download link above. Under **Assets**, download the `.apk` file.
+   Do not download `Source code` or `update.json`.
+2. Open the APK on an Android phone (Android 8 or newer). Allow installation
+   from that source if Android asks, then confirm installation.
+3. Install over the existing app. **Do not uninstall**, because that can remove
+   downloaded audio and settings.
 
-Ung dung Android doc va nghe Kinh Thanh Tieng Viet 1923/1925.
+For later updates, use **Settings > Check for updates** inside the app.
+The original 2.14 signing key differs; updating that installation requires its
+original private key. Versions 2.15 and later share the current signing identity.
 
-## Du lieu
+## Use The App
 
-- 3 ban van offline: VIE1925 (193), VIE2010 (151), NIV (111).
-- Moi ban co 66 sach, 1.189 chuong; giu cach danh so va gop cau cua YouVersion.
-- Ban van VIE1925 lay truc tiep tu YouVersion / Bible.com, version 193,
-  cung phien ban voi cac ban thu audio.
-- Text duoc dong goi trong `app/src/main/assets/bible.db`.
-- Audio khong nam trong APK. Nguoi dung chu dong tai theo chuong, sach,
-  hoac toan bo Kinh Thanh sau khi cai dat.
-- Audio VIE1925 can khoang 1,16 GB; NIV can khoang 1,08 GB (32 kbps).
+- Read VIE1925, VIE2010, or NIV offline. Each has 66 books and 1,189 chapters.
+- Audio is streamed or downloaded inside the app, never bundled with the APK.
+  Download a chapter, a book, or the whole Bible; downloads use up to 12 workers.
+- VIE1925 audio needs about 1.16 GB; NIV audio needs about 1.08 GB.
+  VIE2010 text uses VIE1925 audio, not a VIE2010 recording.
+- Use the speaker icon to hide/show playback controls. Chapter navigation remains
+  available. Changing chapters while paused does not start playback.
+- Settings includes font size, VN/EN interface language, day/night icons, and
+  named playback loops. Save books or chapters in selection order; repeat the
+  whole selection. Selecting outside the active loop turns looping off, but
+  keeps saved loops. NIV and VIE1925 loops are separate.
+- Playback supports background/lock-screen controls, rewind 15 seconds, speed,
+  and a sleep timer. Timer remaining time is shown in whole minutes.
 
-Thong tin nguon va giay phep nam trong
-`app/src/main/assets/VIE1925_SOURCE.txt`.
-
-VIE2010 va NIV duoc nhap theo xac nhan quyen su dung cua chu ung dung.
-Thong tin ban quyen va nguon duoc luu trong bang `text_versions`,
-`app/src/main/assets/TEXT_VERSIONS_SOURCE.txt` va muc Thong tin cua ung dung.
-
-## Tinh nang
-
-- Giao dien doc Kinh Thanh theo bo cuc YouVersion.
-- Chon Cuu Uoc, Tan Uoc, sach va chuong.
-- Sach dang chon co nen noi bat, chu dam va dau tich; khong dung mau do.
-- An bang audio bang nut loa van giu hai mui ten chuyen chuong nho.
-- Hai mui ten chuyen chuong dung vector day, ro hon o ca hai che do audio.
-- Nut thu gon ngay trong bang audio an bang dieu khien, khong dung audio.
-- Ban NIV hien "Chapter" o tieu de chuong; ban tieng Viet van hien "Chuong".
-- Doc text offline, doi co chu.
-- Menu banh rang: Co chu, mot hang gon VN/EN va bieu tuong mat troi/mat trang,
-  Kiem tra cap nhat, Gioi thieu. Giu nguyen kieu dong cua cac muc con lai.
-- Ngon ngu giao dien doc lap voi ban dich Kinh Thanh; lua chon duoc ghi nho.
-- Ngay/Dem doi ngay trong menu, khong mo hop thoai va khong theo he thong.
-- Menu Phat lap: chon nhieu sach hoac tung chuong, phat theo thu tu da chon
-  roi quay lai muc dau. Tich sach them cac chuong chua chon theo thu tu chuong.
-- Luu nhieu vong lap co ten rieng. Danh sach gon: bam ten de dung, menu tung
-  vong lap de sua lua chon, doi ten hoac xoa. Moi ban audio dung mot vong lap.
-- Ten khong duoc trung nhau trong cung ban audio; toi da 48 ky tu. Tat phat lap
-  khong xoa lua chon. Xoa vong lap dang dung chi tat lap, khong dung audio.
-- Xem thu tu phat truoc khi ap dung; bo chon roi chon lai dua chuong ve cuoi hang doi.
-- Ap dung lua chon moi chuyen den chuong dau cua hang doi nhung khong tu phat
-  neu dang tam dung. Luu lai cung lua chon khong lam gian doan audio.
-- Next/previous theo hang doi lap. Chon tay chuong ngoai hang doi tat phat lap,
-  nhung giu lua chon da luu. Doi ban audio tat lap; NIV va VIE1925 luu rieng.
-- Phat lap dung callback ket thuc chuong, khong them polling, wake lock, hay
-  tu tai audio. Hen gio va xu ly cuoc goi/audio focus van duoc giu nguyen.
-- Gioi thieu nam cuoi menu, co tieu de va cac muc noi dung/audio/nguon rieng.
-- Ghi nho giao dien; doi giao dien khong khoi dong lai audio.
-- Nut ban dich nam duoi tieu de chuong. Doi ban dich giu nguyen sach/chuong,
-  khong bat dau audio khi dang tam dung va ghi nho lua chon.
-- Bo chon ban dich gon, moi dong mot ma ban dich va dau tich cho lua chon hien tai.
-- NIV dung ban thu Max McLean (The Listener's Bible), cung ban NIV 111.
-- VIE2010 van dung audio VIE1925 va hien ro ten ban audio.
-- Doi ban dich giua NIV/VIE1925 doi ca audio, giu sach/chuong va trang thai
-  phat/tam dung. Doi chuong khi tam dung khong tao MediaPlayer hoac stream.
-- Dung rieng ten tep, hang doi va vi tri nghe cho NIV; giu tep VIE1925 cu.
-- Stream audio khi chua tai.
-- Tai audio nen voi 12 luong tai song song.
-- Tai mot chuong, mot sach, hoac ca 66 sach.
-- Audio da tai duoc giu den khi nguoi dung xoa.
-- Phat nen, media notification, tua, toc do va hen gio tat.
-- Bang audio thu gon co nut mo rong, ben canh hai mui ten chuyen chuong.
-- Notification va lock screen: lui 15 giay, phat/tam dung, chuong sau.
-  Android 13+ lay nut tu MediaSession; cac ban cu dung ba notification actions.
-- Hen gio co cac moc 15/30/60/90/120/240/480 phut va dem nguoc truc tiep
-  theo phut trong bang audio va hop hen gio, khong hien giay.
-  Dung dong ho monotonic, khong them wake lock; thoi diem tat van giu chinh xac.
-- Deadline hen gio duoc luu de khong tu phat lai sau khi het gio va service bi tao lai.
-  Hen gio cu bi huy khi thiet bi khoi dong lai.
-- Tu dong chuyen chuong va ghi nho vi tri nghe.
-
-## Hieu Nang
-
-- APK khoang 9,65 MB. Phan lon la 3 ban van nen; database sau khi giai nen
-  la 28,57 MB. Audio tai rieng, khong tinh vao kich thuoc APK.
-- MediaPlayer giai ma audio bang API Android; khong co WebView hay engine UI rieng.
-- Service lay mau vi tri moi 5 giay thay vi 1 giay. Thanh tien trinh van cap nhat
-  moi giay khi mo app, noi suy theo toc do va duoc hieu chinh tu mau that.
-- Khong gui lai media metadata moi giay. MediaSession cap nhat khi co thao tac
-  hoac doi trang thai; Android tu chay thanh tien trinh tren lock screen.
-- Luu vi tri dinh ky khoang 15 giay thay vi moi giay; luu ngay khi tam dung,
-  tua, chuyen chuong va dong service. Neu tien trinh bi kill dot ngot, co the
-  mat toi da khoang 20 giay vi tri nghe, khong mat tep audio da tai.
-- Hen gio chi co mot callback tat. Hop hen gio cap nhat theo phut va dung cap nhat
-  khi app bi an. UI ticker cung dung khi app bi an; khong tham do cap nhat app nen.
-- Wake lock phat audio chi do MediaPlayer quan ly de nghe khi tat man hinh.
-  Khong them wake lock rieng cho hen gio. Tai audio dung toi da 12 luong khi
-  nguoi dung yeu cau, nen ton mang/CPU hon nghe tep offline da tai.
-- Chua co so do RAM, CPU hay pin tren dien thoai that; kich thuoc APK khong
-  phai phep do dien nang.
-
-## Build
-
-Yeu cau Android SDK 35 va JDK 17 tro len.
-
-```powershell
-.\gradlew.bat assembleDebug
-```
-
-APK mac dinh:
+## Folder Layout
 
 ```text
-app/build2/outputs/apk/debug/app-debug.apk
+README.md       The only project guide
+app/            Android application, bundled text, notices, and regression tests
+gradle/         Gradle wrapper; keep gradlew and the root Gradle files too
+tools/          Release, validation, and authorized data-maintenance tools
+install/        One current local installer: NgheKinhThanh1925.apk (not in Git)
+archive/        Old installers/builds/settings; recovery only (not in Git)
 ```
 
-Ban phat hanh khong bat che do debug, giu dung khoa ky hien tai:
+Old APKs are removed from the repository's current files; Git history and older
+Releases preserve published versions. Never use an archived installer as latest.
+To refresh the local installer from the official release:
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lintRelease assembleRelease `
-  -PdebugKeystore=C:\Users\damvi\.android\debug.keystore
+.\tools\sync_latest_release.ps1
 ```
 
-Khong dua keystore, token GitHub, local.properties, cache hoac build output
-vao Git. File .gitignore loai tru cac muc nay.
+This checks the release URL, version metadata, size, and SHA-256 before replacing
+the local installer. A different existing installer is archived first.
 
-## Phat Hanh Len GitHub
+## Develop And Verify
 
-Sau khi test/build thanh cong, commit va push source len main. Dung Git
-Credential Manager dang nhap vao tai khoan co quyen push, roi chay:
+Open this project folder in Android Studio. Use JDK 21, Android SDK 35, and Git.
+Android Studio supplies the SDK location in the untracked `local.properties`.
+Keep caches/builds outside OneDrive; run these commands from the project root:
 
 ```powershell
-.\tools\publish_release.ps1 `
-  -ApkPath .\app\build2\outputs\apk\release\app-release.apk `
-  -SourceCommit (git rev-parse HEAD) `
-  -MinimumSdk 26 `
-  -Notes 'Mo ta thay doi cua ban moi.'
+$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+$env:GRADLE_USER_HOME = "$env:LOCALAPPDATA\NgheKinhThanh1925\gradle"
+$build = "$env:LOCALAPPDATA\NgheKinhThanh1925\build"
+.\tools\check_project.ps1
+.\tools\test_release_tools.ps1
+.\gradlew.bat testDebugUnitTest lintRelease assembleRelease "-PngheBuildDir=$build" "-PdebugKeystore=$env:USERPROFILE\.android\debug.keystore"
 ```
 
-Script kiem tra chu ky va build metadata, tao draft release, tai APK va
-update.json, kiem tra kich thuoc/checksum GitHub, sau do moi publish.
-Khong ghi token vao tep hoac dua khoa ky len GitHub. Moi versionCode phai
-lon hon ban truoc; khong thay the APK cua mot release da phat hanh.
-Neu upload bi loi, draft duoc giu de kiem tra va khong hien cho updater.
+The release APK is `$build\outputs\apk\release\app-release.apk`.
+Robolectric tests simulate Android; they do not replace testing on a real phone.
+Use the existing private signing key, not a newly generated key. Its certificate
+SHA-256 is `364b713d0baf12a9c45ed74b5c224b8bc8a10d24582eb61939c380456914c613`.
+Back it up privately. Never commit keys, credentials, local settings, or builds.
 
-Khi OneDrive khoa thu muc build, chuyen output sang thu muc khac:
+## Publish An App Update
+
+For an app change, increment `versionCode` and `versionName` in
+`app/build.gradle.kts`, run the checks above, then commit and push to `main`.
+Sign in with Git Credential Manager using an account with repository write access.
 
 ```powershell
-.\gradlew.bat assembleDebug -PngheBuildDir=C:\Temp\nghekinhthanh-build
+.\tools\publish_release.ps1 -ApkPath "$build\outputs\apk\release\app-release.apk" -SourceCommit (git rev-parse HEAD) -Notes 'Describe the app changes.'
 ```
 
-## Tao lai co so du lieu
+The publisher checks signing/build metadata, uploads one versioned APK and
+`update.json` to a draft, verifies the uploaded file, publishes, and refreshes
+`install/`. The permanent download link at the top needs no version edits.
+Never replace a published APK, put an APK in the source tree, or rewrite history.
+Documentation-only cleanup does not require a new app version.
 
-Can Python va Beautiful Soup (`pip install beautifulsoup4`).
-Importer doc cac trang chuong cong khai cua YouVersion VIE1925:
+## Data And AI Maintenance
 
-```powershell
-python tools\import_youversion_text.py `
-  --manifest app\src\main\assets\bible_manifest.json `
-  --database app\src\main\assets\bible.db `
-  --cache .youversion-cache
-```
-
-Script kiem tra du 66 sach, 1.189 chuong, text cua tung chuong va tinh toan ven
-SQLite truoc khi thay database. Cache cho phep tiep tuc sau khi bi ngat.
-Audio URL va ten file duoc giu nguyen. `generate_bible_database.py` chi
-con dung de tao ban du lieu eBible cu, khong phai nguon text hien tai.
-
-## Nhap Them VIE2010 Va NIV
-
-Chi chay khi co quyen su dung cac ban van nay:
-
-```powershell
-python tools\import_additional_versions.py `
-  --manifest app\src\main\assets\bible_manifest.json `
-  --database app\src\main\assets\bible.db `
-  --cache .additional-text-cache
-```
-
-Importer dung lai parser YouVersion, kiem tra du 2.378 chuong moi,
-giu nguyen bang audio va ban van VIE1925. Phai chay importer nay sau
-khi tao lai database VIE1925.
-
-## Audio NIV
-
-Sau khi nhap text, thu thap metadata 1.189 chuong (khong tai audio):
-
-```powershell
-python tools\import_niv_audio.py
-```
-
-Script doc AudioObject JSON-LD tu trang audio cong khai, kiem tra ban thu
-3/version 111, kiem tra 3 stream bang HTTP Range, roi ghi bang audio_chapters.
-Cache niv-audio-cache cho phep tiep tuc neu mat ket noi. Giu nguyen bang
-chapters, text, ten tep va ma tai cu. Thong tin nguon nam trong
-app/src/main/assets/NIV_AUDIO_SOURCE.txt va muc thong tin cua ung dung.
-
-Kiem tra HTTP HEAD cho moi tep va cap nhat tong dung luong:
-
-```powershell
-python tools\validate_niv_audio.py
-```
-
-Kiem tra playback tren JVM (Robolectric, khong phat audio that):
-
-```powershell
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
-```
+- Start with `git status`; preserve unrelated edits. Work in this checkout,
+  not an older staging copy. Run `tools/check_project.ps1` before committing.
+- Reader UI: `MainActivity.kt`; background playback: `AudioPlayerService.kt`;
+  loops: `PlaybackLoopStore.kt` and the two `PlaybackLoop*Dialog.kt` files.
+- Preserve paused state, sleep/focus handling, signing identity, and existing
+  downloaded filenames. NIV and Vietnamese audio storage must remain separate.
+  Do not add polling, wake locks, or dependencies without a demonstrated need.
+- `app/src/main/assets/bible.db` is already complete. Do not rebuild or fetch
+  Bible content during ordinary app builds. Authorized refresh tools, in order:
+  `import_youversion_text.py`, `import_additional_versions.py`, `import_niv_audio.py`.
+  The text importers explain required arguments through `--help`; back up the
+  database first. Data tools require Python 3 and BeautifulSoup (`pip install beautifulsoup4`).
+  Offline parser tests: `python -m unittest discover -s tools -p 'test_*.py'`.
+- Content provenance/copyright notices are retained under `app/src/main/assets/`:
+  `VIE1925_SOURCE.txt`, `TEXT_VERSIONS_SOURCE.txt`, and `NIV_AUDIO_SOURCE.txt`.
+  VIE1925 is public domain; VIE2010/NIV are copyrighted and require permission.
+  The owner's stated authorization is not a license for third-party redistribution.
