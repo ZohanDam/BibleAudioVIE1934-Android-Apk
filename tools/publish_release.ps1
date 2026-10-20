@@ -74,7 +74,7 @@ $manifest = [ordered]@{
     notes=$Notes
 }
 $releaseBody = @{
-    tag_name="v$version"; target_commitish=$SourceCommit; name="Kinh Thanh $version"
+    tag_name="v$version"; target_commitish=$SourceCommit; name="Bible Audio $version"
     body="## Install`nDownload **$assetName** under Assets below. Do not download Source code or update.json.`n`nInstall over the existing app (2.15 or later). Do not uninstall: offline audio and settings are retained.`n`nFor future updates: Settings > Check for updates.`n`n## Changes`n$Notes`n`n[Project guide](https://github.com/$repository#readme)"
     draft=$true; prerelease=$false
 } | ConvertTo-Json
@@ -110,6 +110,15 @@ try {
     Write-Output "Published $($published.html_url)"
     Write-Output "APK: $($manifest.apkUrl)"
     Write-Output "SHA256: $($manifest.sha256)"
+    if ($latest -and !$latest.body.StartsWith('Historical release.')) {
+        try {
+            $historical = "Historical release. **[Download the current version](https://github.com/$repository/releases/latest)** instead.`n`n---`n`n$($latest.body)"
+            $oldBody = @{body=$historical} | ConvertTo-Json
+            Invoke-RestMethod -Uri "$api/releases/$($latest.id)" -Headers $headers -Method Patch -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($oldBody)) | Out-Null
+        } catch {
+            Write-Warning 'Release is published, but the previous release could not be labeled historical.'
+        }
+    }
 } finally {
     $client.Dispose()
     $credential.Clear()
