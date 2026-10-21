@@ -31,6 +31,8 @@ original private key. Versions 2.15 and later share the current signing identity
   named playback loops. Save books or chapters in selection order; repeat the
   whole selection. Selecting outside the active loop turns looping off, but
   keeps saved loops. NIV and VIE1925 loops are separate.
+- Settings stays open when choosing options; font sizes can be previewed without
+  reopening the chooser. Close the chooser explicitly; Back or tapping outside closes the menu.
 - Playback supports background/lock-screen controls, rewind 15 seconds, speed,
   and a sleep timer. Timer remaining time is shown in whole minutes.
 

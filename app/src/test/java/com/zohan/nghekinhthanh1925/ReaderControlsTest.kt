@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
+import android.view.MotionEvent
 import android.widget.TextView
 import android.widget.LinearLayout
 import android.widget.ImageButton
@@ -258,7 +259,7 @@ class ReaderControlsTest {
         assertTrue(views(rows[1]).single { it.contentDescription == "VN" }.isSelected)
         assertTrue("Update must use a distinct vector icon", rows[3].getChildAt(0) is ImageView)
         rows.last().performClick()
-        assertFalse(popup.isShowing)
+        assertTrue(popup.isShowing)
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
         val texts = views(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
         assertTrue(texts.contains("Giới thiệu ứng dụng"))
@@ -267,6 +268,7 @@ class ReaderControlsTest {
         assertEquals(sections.map { texts.indexOf(it) }.sorted(), sections.map { texts.indexOf(it) })
         assertTrue(texts.any { it.contains("bible.com") })
         dialog.dismiss()
+        assertTrue(popup.isShowing)
     }
 
     @Test fun nivUsesEnglishChapterHeadingAndSettingsLabels() {
@@ -299,16 +301,20 @@ class ReaderControlsTest {
     }
 
     @Test fun languageButtonsChangeOnlyInterfaceAndRememberTheChoice() = withReader { activity ->
-        val (_, rows) = menuRows(activity, "Cài đặt")
+        val (popup, rows) = menuRows(activity, "Cài đặt")
         views(rows[1]).single { it.contentDescription == "EN" }.performClick()
+        assertTrue(popup.isShowing)
         assertTrue(UiLanguage.isEnglish(activity))
         assertEquals("en", preferences.getString("uiLanguage", null))
         assertNotNull(control(activity, "Choose book"))
         assertEquals("VIE1925", preferences.getString("textVersion", "VIE1925"))
         assertFalse(PlaybackStateStore.playWhenReady)
-        val (_, englishRows) = menuRows(activity, "Settings")
+        val (englishPopup, englishRows) = menuRows(activity, "Settings")
+        assertSame(popup, englishPopup)
+        assertEquals("Font", englishRows.first().contentDescription)
         assertTrue(views(englishRows[1]).single { it.contentDescription == "EN" }.isSelected)
         views(englishRows[1]).single { it.contentDescription == "VN" }.performClick()
+        assertTrue(popup.isShowing)
         assertNotNull(control(activity, "Chọn sách"))
         assertEquals("vi", preferences.getString("uiLanguage", null))
     }
@@ -317,14 +323,17 @@ class ReaderControlsTest {
         PlaybackStateStore.isPlaying = true
         PlaybackStateStore.playWhenReady = true
         withReader { activity ->
-            val (_, rows) = menuRows(activity, "Cài đặt")
+            val (popup, rows) = menuRows(activity, "Cài đặt")
             views(rows[1]).single { it.contentDescription == "Đêm" }.performClick()
+            assertTrue(popup.isShowing)
             assertEquals("dark", preferences.getString("themeMode", null))
             assertTrue(PlaybackStateStore.isPlaying)
-            val (_, darkRows) = menuRows(activity, "Cài đặt")
+            val (darkPopup, darkRows) = menuRows(activity, "Cài đặt")
+            assertSame(popup, darkPopup)
             assertTrue(views(darkRows[1]).single { it.contentDescription == "Đêm" }.isSelected)
             assertFalse(views(darkRows[1]).filterIsInstance<TextView>().any { it.text.toString().contains("hệ thống") })
             views(darkRows[1]).single { it.contentDescription == "Ngày" }.performClick()
+            assertTrue(popup.isShowing)
             assertEquals("light", preferences.getString("themeMode", null))
             assertTrue(PlaybackStateStore.playWhenReady)
         }
@@ -335,6 +344,68 @@ class ReaderControlsTest {
         control(activity, "Mở rộng bảng điều khiển").performClick()
         assertNotNull(control(activity, "Thu gọn bảng điều khiển"))
         assertNotNull(control(activity, "Phát hoặc tạm dừng"))
+        assertFalse(PlaybackStateStore.playWhenReady)
+    }
+
+    @Test fun fontChooserPreviewsMultipleSizesWithoutClosingItOrTheSettingsMenu() = withReader { activity ->
+        val (popup, rows) = menuRows(activity, "Cài đặt")
+        rows.first().performClick()
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(popup.isShowing)
+        for ((index, size) in listOf(0 to 16f, 1 to 18f, 3 to 22f)) {
+            shadowOf(dialog).clickOnItem(index)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(dialog.isShowing)
+            assertTrue(popup.isShowing)
+            assertEquals(size, preferences.getFloat("fontSize", 0f))
+            assertFalse(PlaybackStateStore.playWhenReady)
+        }
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(dialog.isShowing)
+        assertTrue(popup.isShowing)
+        (popup.contentView as LinearLayout).getChildAt(0).performClick()
+        val reopened = ShadowAlertDialog.getLatestAlertDialog()
+        assertEquals(3, reopened.listView.checkedItemPosition)
+        reopened.dismiss()
+    }
+
+    @Test fun settingsCanStillBeDismissedOutsideAndOpenedAgain() = withReader { activity ->
+        val (popup, _) = menuRows(activity, "Cài đặt")
+        assertTrue(popup.isOutsideTouchable)
+        val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_OUTSIDE, -1f, -1f, 0)
+        try { popup.contentView.rootView.dispatchTouchEvent(event) } finally { event.recycle() }
+        assertFalse(popup.isShowing)
+        val (reopened, _) = menuRows(activity, "Cài đặt")
+        assertTrue(reopened.isShowing)
+        assertNotSame(popup, reopened)
+    }
+
+    @Test fun destroyingReaderClosesTheSettingsWindow() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val (popup, _) = menuRows(controller.get(), "Cài đặt")
+        controller.pause().stop().destroy()
+        assertFalse(popup.isShowing)
+    }
+
+    @Test fun applyingLoopKeepsSettingsOpenAndRefreshesItsStatus() = withReader { activity ->
+        val (popup, rows) = menuRows(activity, "Cài đặt")
+        rows[2].performClick()
+        val manager = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(popup.isShowing)
+        manager.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        val editor = ShadowAlertDialog.getLatestAlertDialog()
+        (tagged(editor, "loopName") as android.widget.EditText).setText("Evening")
+        tagged(editor, "loopChapters:GEN").performClick()
+        val chapters = ShadowAlertDialog.getLatestAlertDialog()
+        tagged(chapters, "loopChapter:3").performClick()
+        chapters.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        editor.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals(3, PlaybackStateStore.currentOrder)
+        assertTrue(popup.isShowing)
+        assertTrue((popup.contentView as LinearLayout).getChildAt(2).isSelected)
+        manager.dismiss()
+        assertTrue(popup.isShowing)
         assertFalse(PlaybackStateStore.playWhenReady)
     }
 

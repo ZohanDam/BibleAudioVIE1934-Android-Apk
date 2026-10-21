@@ -76,6 +76,8 @@ class MainActivity : Activity() {
     private var isSeeking = false
     private var darkMode = false
     private var readerScrollView: ScrollView? = null
+    private var settingsPopup: PopupWindow? = null
+    private var settingsPopupContent: LinearLayout? = null
 
     private val colorBackground get() = if (darkMode) Color.rgb(18, 18, 18) else Color.rgb(250, 250, 250)
     private val colorSurface get() = if (darkMode) Color.rgb(30, 30, 30) else Color.WHITE
@@ -141,6 +143,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        settingsPopup?.dismiss()
         if (::appUpdates.isInitialized) appUpdates.close()
         handler.removeCallbacksAndMessages(null)
         backgroundExecutor.shutdownNow()
@@ -808,12 +811,12 @@ class MainActivity : Activity() {
         val selected = sizes.indexOfFirst { it == fontSize }.coerceAtLeast(0)
         AlertDialog.Builder(this)
             .setTitle(uiText("Cỡ chữ", "Font"))
-            .setSingleChoiceItems(labels, selected) { dialog, index ->
+            .setSingleChoiceItems(labels, selected) { _, index ->
                 fontSize = sizes[index]
                 preferences.edit().putFloat(KEY_FONT_SIZE, fontSize).apply()
-                dialog.dismiss()
                 renderReader()
             }
+            .setPositiveButton(uiText("Đóng", "Close"), null)
             .show()
     }
 
@@ -1012,20 +1015,42 @@ class MainActivity : Activity() {
     }
 
     private fun showToolbarMenu(anchor: View) {
-        var popup: PopupWindow? = null
-        val content = vertical().apply {
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+        if (settingsPopup?.isShowing == true) return
+        val content = vertical().apply { setPadding(dp(4), dp(4), dp(4), dp(4)) }
+        val popup = PopupWindow(content, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            isOutsideTouchable = true
+            elevation = dp(8).toFloat()
+            setBackgroundDrawable(GradientDrawable().apply { setColor(Color.TRANSPARENT) })
+        }
+        settingsPopup = popup
+        settingsPopupContent = content
+        popup.setOnDismissListener {
+            if (settingsPopup === popup) {
+                settingsPopup = null
+                settingsPopupContent = null
+            }
+        }
+        refreshSettingsMenu()
+        // The content container survives setContentView; the gear itself does not.
+        val stableAnchor = findViewById<View>(android.R.id.content)
+        val gearPosition = IntArray(2).also { anchor.getLocationOnScreen(it) }
+        val containerPosition = IntArray(2).also { stableAnchor.getLocationOnScreen(it) }
+        val offset = gearPosition[1] + anchor.height - containerPosition[1] - stableAnchor.height - dp(4)
+        popup.showAsDropDown(stableAnchor, -dp(6), offset, Gravity.END)
+    }
+
+    private fun refreshSettingsMenu() {
+        val content = settingsPopupContent ?: return
+        content.removeAllViews()
+        content.apply {
             background = rounded(colorSurface, colorBorder, 8)
-            addView(settingsMenuItem("Aa", uiText("Cỡ chữ", "Font")) {
-                popup?.dismiss()
-                showFontSizeDialog()
-            })
+            addView(settingsMenuItem("Aa", uiText("Cỡ chữ", "Font")) { showFontSizeDialog() })
             addView(readerSettingsChoices {
-                popup?.dismiss()
                 refreshReaderOptions()
+                refreshSettingsMenu()
             })
             addView(settingsMenuItem("", uiText("Phát lặp", "Loop playback"), R.drawable.ic_repeat) {
-                popup?.dismiss()
                 showLoopPlaybackDialog()
             }.apply {
                 isSelected = loops.load(currentChapter.audioVersion).enabled
@@ -1038,27 +1063,14 @@ class MainActivity : Activity() {
             })
             addView(settingsMenuItem("", uiText("Kiểm tra cập nhật", "Check for updates"),
                 R.drawable.ic_system_update) {
-                popup?.dismiss()
                 appUpdates.check()
             })
             addView(settingsMenuItem("ⓘ", uiText("Giới thiệu", "About")) {
-                popup?.dismiss()
                 showAboutDialog()
             })
         }
-        popup = PopupWindow(
-            content,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            true
-        ).apply {
-            isOutsideTouchable = true
-            elevation = dp(8).toFloat()
-            setBackgroundDrawable(GradientDrawable().apply {
-                setColor(Color.TRANSPARENT)
-            })
-            showAsDropDown(anchor, -dp(6), -dp(4))
-        }
+        settingsPopup?.takeIf { it.isShowing }?.update(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     private fun showLoopPlaybackDialog() {
@@ -1074,6 +1086,7 @@ class MainActivity : Activity() {
                         selectChapter(it, restart = it.globalOrder == currentChapter.globalOrder)
                     }
                 } else updatePlayerBar()
+                refreshSettingsMenu()
             }).show()
     }
 
