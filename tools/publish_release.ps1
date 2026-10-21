@@ -7,7 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 & (Join-Path $PSScriptRoot 'check_project.ps1')
-$repository = 'ZohanDam/BibleAudioVIE1934-Android-Apk'
+$repository = 'ZohanDam/Onl_Offline-Bible-Audio-Android-apk'
 $apk = Get-Item -LiteralPath $ApkPath
 $metadataPath = Join-Path $apk.DirectoryName 'output-metadata.json'
 $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json

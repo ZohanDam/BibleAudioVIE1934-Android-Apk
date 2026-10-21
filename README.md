@@ -1,6 +1,6 @@
 # Bible Audio / Nghe Kinh Thanh
 
-**[DOWNLOAD THE LATEST ANDROID APP](https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/latest)**
+**[DOWNLOAD THE LATEST ANDROID APP](https://github.com/ZohanDam/Onl_Offline-Bible-Audio-Android-apk/releases/latest)**
 
 This README is the single guide for users, developers, and AI assistants.
 GitHub Releases contains installers. The repository contains source code, not APKs.
@@ -15,6 +15,8 @@ GitHub Releases contains installers. The repository contains source code, not AP
    downloaded audio and settings.
 
 For later updates, use **Settings > Check for updates** inside the app.
+After the repository rename, versions 2.24 and earlier need one manual APK update
+to 2.25 or later; install over the existing app to preserve downloads.
 The original 2.14 signing key differs; updating that installation requires its
 original private key. Versions 2.15 and later share the current signing identity.
 

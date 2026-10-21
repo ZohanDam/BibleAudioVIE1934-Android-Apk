@@ -7,7 +7,7 @@ $oldPayload = [byte[]](9, 8, 7)
 $hasher = [Security.Cryptography.SHA256]::Create()
 try { $hash = ([BitConverter]::ToString($hasher.ComputeHash($payload))).Replace('-', '').ToLowerInvariant() }
 finally { $hasher.Dispose() }
-$baseUrl = 'https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/download/v2.24'
+$baseUrl = 'https://github.com/ZohanDam/Onl_Offline-Bible-Audio-Android-apk/releases/download/v2.24'
 $count = 0
 
 # Network and the final file move are isolated; real filesystem operations use a temporary fixture only.
@@ -83,6 +83,7 @@ try {
     Run-Case 'replacement-rollback' { $mock.MoveFailure = $true } -Failure $true
     Run-Case 'untrusted-manifest' { $mock.Release.assets[0].browser_download_url = 'https://example.com/update.json' } -Failure $true
     Run-Case 'untrusted-apk' { $mock.Manifest.apkUrl = 'https://example.com/app.apk' } -Failure $true
+    Run-Case 'former-repository' { $mock.Manifest.apkUrl = 'https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/download/v2.24/app.apk' } -Failure $true
     Run-Case 'wrong-package' { $mock.Manifest.packageName = 'other.package' } -Failure $true
     Run-Case 'wrong-version' { $mock.Manifest.versionName = '2.23' } -Failure $true
     Run-Case 'prerelease' { $mock.Release.prerelease = $true } -Failure $true

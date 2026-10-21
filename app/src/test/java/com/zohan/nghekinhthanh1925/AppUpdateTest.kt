@@ -86,6 +86,17 @@ class AppUpdateTest {
         }
     }
 
+    @Test fun updaterUsesRenamedRepositoryWithoutRelaxingUrlValidation() {
+        assertEquals("ZohanDam/Onl_Offline-Bible-Audio-Android-apk", AppUpdateClient.REPOSITORY)
+        assertEquals("https://api.github.com/repos/ZohanDam/Onl_Offline-Bible-Audio-Android-apk/releases/latest",
+            AppUpdateClient.LATEST_RELEASE_URL)
+        assertEquals(assetUrl, release().apkUrl)
+        assertThrows(IllegalArgumentException::class.java) {
+            AppUpdateClient.parseManifest(manifest().put("apkUrl",
+                "https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/download/v2.24/app.apk"), context.packageName)
+        }
+    }
+
     @Test fun manifestRejectsInvalidSizeAndDigest() {
         assertThrows(IllegalArgumentException::class.java) {
             AppUpdateClient.parseManifest(manifest().put("sha256", "wrong"), context.packageName)

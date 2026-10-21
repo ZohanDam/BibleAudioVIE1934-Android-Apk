@@ -17,7 +17,7 @@ if ($guides.Count -ne 1 -or $guides[0] -ne 'README.md') { throw 'Keep README.md 
 $extraGuides = @(git -C $root ls-files --others --exclude-standard -- '*.md')
 if ($extraGuides.Count) { throw "Extra project guides found: $($extraGuides -join ', ')" }
 $readme = Get-Content -LiteralPath (Join-Path $root 'README.md') -Raw
-if (!$readme.Contains('https://github.com/ZohanDam/BibleAudioVIE1934-Android-Apk/releases/latest') -or
+if (!$readme.Contains('https://github.com/ZohanDam/Onl_Offline-Bible-Audio-Android-apk/releases/latest') -or
     $readme -match 'blob/main/[^\s)]+\.apk|releases/download/v[0-9]') {
     throw 'README must use the permanent latest-release link, not a pinned/old APK'
 }

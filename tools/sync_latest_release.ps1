@@ -3,7 +3,7 @@ param(
     [string]$ExpectedVersion
 )
 $ErrorActionPreference = 'Stop'
-$repository = 'ZohanDam/BibleAudioVIE1934-Android-Apk'
+$repository = 'ZohanDam/Onl_Offline-Bible-Audio-Android-apk'
 $root = [IO.Path]::GetFullPath($ProjectDirectory)
 $install = Join-Path $root 'install'
 $archive = Join-Path $root 'archive/installers'

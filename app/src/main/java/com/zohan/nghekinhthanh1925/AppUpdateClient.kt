@@ -168,7 +168,7 @@ class AppUpdateClient(
     }
 
     companion object {
-        const val REPOSITORY = "ZohanDam/BibleAudioVIE1934-Android-Apk"
+        const val REPOSITORY = "ZohanDam/Onl_Offline-Bible-Audio-Android-apk"
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPOSITORY/releases/latest"
         private val DOWNLOAD_HOSTS = setOf("api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
 
